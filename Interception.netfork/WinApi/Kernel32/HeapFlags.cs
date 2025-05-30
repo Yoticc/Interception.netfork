@@ -1,0 +1,20 @@
+﻿enum HeapFlags : uint
+{
+    None                  = 0x00000,
+    NoSerialize           = 0x00001,
+    Growable              = 0x00002,
+    GenerateExceptions    = 0x00004,
+    ZeroMemory            = 0x00008,
+    ReadllocInPlaceOnly   = 0x00010,
+    TagShift              = 0x00012,
+    TailCheckingEnabled   = 0x00020,
+    FreeCheckingEnabled   = 0x00040,
+    DisableCoalesceOnFree = 0x00080,
+    CreateSegmentHeap     = 0x00100,
+    CreateHardened        = 0x00200,
+    MaximumTag            = 0x00FFF,
+    PreudoTagFlag         = 0x08000,
+    CreateAlign16         = 0x10000,
+    CreateEnableTracing   = 0x20000,
+    CreateEnableExecute   = 0x40000,
+}

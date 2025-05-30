@@ -1,174 +1,149 @@
-﻿global using OldDevice = int;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Interception;
-public unsafe static class InterceptionInterop
+public unsafe struct Device
 {
-    public delegate bool Predicate(Context context, OldDevice device);
+    public nint FileHandle, EventHandle;
 
-    [DllImport("kernel32")] static extern nint CreateFileA(byte* fileName, int desiredAccess, int shareMode, void* securityAttributes, int creationDisposition, int flagsAndAttributes, nint templateFile);
-    [DllImport("kernel32")] static extern bool DeviceIoControl(nint device, int ioControlCode, void* inBuffer, long inBufferSize, void* outBuffer, long outBufferSize, int* bytesReturned, void* overlapped);
-    [DllImport("kernel32")] static extern nint CreateEventA(nint eventAttributes, bool manualReset, bool initialState, byte* name);
-    [DllImport("kernel32")] static extern int  WaitForMultipleObjects(int count, nint* handles, bool waitAll, int milliseconds);
-    [DllImport("kernel32")] static extern bool CloseHandle(nint objectHandle);
+    public bool Initialize(byte* deviceName, nint* eventHandleAligned) =>
+        (FileHandle = CreateFileA(deviceName, ACCESS_MASK_GENERIC_READ, default, null, FILE_CREATION_OPEN_EXISTS, default, default)) != INVALID_HANDLE_VALUE &&
+        (EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default &&
+        DeviceIoControl(FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null);
 
-    const nint INVALID_HANDLE_VALUE = -1;
-    const int FILE_DEVICE_UNKNOWN = 0x22;
-    const int METHOD_BUFFERED = 0;
-    const int FILE_ANY_ACCESS = 0;
-    const int INFINITE = unchecked((int)0xFFFFFFFF);
-    const int WAIT_FAILED = unchecked((int)0xFFFFFFFF);
-    const int WAIT_TIMEOUT = 0x102;
+    public void Send<T>(T* stroke) where T : unmanaged => DeviceIoControl(FileHandle, IOCTL_WRITE, stroke, sizeof(T), null, 0, null, null);
+    public bool Receive<T>(T* stroke) where T : unmanaged => DeviceIoControl(FileHandle, IOCTL_READ, null, 0, stroke, sizeof(T), null, null);
+
+    public void SetFilter(Filter filter) => DeviceIoControl(FileHandle, IOCTL_SET_FILTER, &filter, sizeof(Filter), null, 0, null, null);
+
+    public void Destoy()
+    {
+        if (FileHandle != default && FileHandle != INVALID_HANDLE_VALUE)
+            CloseHandle(FileHandle);
+
+        if (EventHandle != default)
+            CloseHandle(EventHandle);
+    }
+
+    const int IOCTL_SET_FILTER = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x804 << 2 | METHOD_BUFFERED;
+    const int IOCTL_SET_EVENT = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x810 << 2 | METHOD_BUFFERED;
+    const int IOCTL_WRITE = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x820 << 2 | METHOD_BUFFERED;
+    const int IOCTL_READ = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x840 << 2 | METHOD_BUFFERED;
     const int ACCESS_MASK_GENERIC_READ = unchecked((int)0x80000000);
     const int FILE_CREATION_OPEN_EXISTS = 3;
+    const nint INVALID_HANDLE_VALUE = -1;
+    const int FILE_DEVICE_UNKNOWN = 0x22;
+    const int FILE_ANY_ACCESS = 0;
+    const int METHOD_BUFFERED = 0;
 
+    [DllImport("kernel32")] static extern bool DeviceIoControl(nint device, int ioControlCode, void* inBuffer, long inBufferSize, void* outBuffer, long outBufferSize, int* bytesReturned, void* overlapped);
+    [DllImport("kernel32")] static extern nint CreateFileA(byte* fileName, int desiredAccess, int shareMode, void* securityAttributes, int creationDisposition, int flags, nint template);
+    [DllImport("kernel32")] static extern nint CreateEventA(nint eventAttributes, bool manualReset, bool initialState, byte* name);
+    [DllImport("kernel32")] static extern bool CloseHandle(nint handle);
+}
+
+public unsafe struct Mouse
+{
+    public Device Device;
+
+    public void Send(MouseStroke* stroke) => Device.Send(stroke);
+    public bool Receive(MouseStroke* stroke) => Device.Receive(stroke);
+}
+
+public unsafe struct Keyboard
+{
+    public Device Device;
+
+    public void Send(KeyStroke* stroke) => Device.Send(stroke);
+    public bool Receive(KeyStroke* stroke) => Device.Receive(stroke);
+}
+
+public unsafe struct Context
+{
     const int MaxKeyboards = 10;
     const int MaxMouses = 10;
     const int MaxDevices = MaxKeyboards + MaxMouses;
 
-    const int IOCTL_SET_FILTER      = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x804 << 2 | METHOD_BUFFERED;
-    const int IOCTL_GET_FILTER      = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x808 << 2 | METHOD_BUFFERED;
-    const int IOCTL_SET_EVENT       = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x810 << 2 | METHOD_BUFFERED;
-    const int IOCTL_WRITE           = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x820 << 2 | METHOD_BUFFERED;
-    const int IOCTL_READ            = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x840 << 2 | METHOD_BUFFERED;
-    const int IOCTL_GET_HARDWARE_ID = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x880 << 2 | METHOD_BUFFERED;
+    public readonly Device* Devices;
 
-    public struct Device
+    public Device* FirstDevice => Devices;
+    public Device* LastDevice => FirstDevice + MaxDevices - 1;
+
+    public Keyboard* Keyboards => (Keyboard*)Devices;
+    public Keyboard* FirstKeyboard => Keyboards;
+    public Keyboard* LastKeyboard => Keyboards + MaxKeyboards - 1;
+
+    public Mouse* Mouses => (Mouse*)(Devices + MaxMouses);
+    public Mouse* FirstMouse => Mouses;
+    public Mouse* LastMouse => Mouses + MaxMouses - 1;
+
+    public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
+
+    public Mouse* WaitMouseInput() => (Mouse*)WaitDeviceInput((Device*)FirstMouse, (Device*)LastMouse, INFINITE);
+    public Keyboard* WaitKeyboardInput() => (Keyboard*)WaitDeviceInput((Device*)FirstKeyboard, (Device*)LastKeyboard, INFINITE);
+
+    public void SetFilter(Filter filter) => SetFilter(FirstDevice, LastDevice, filter);
+    public void SetMouseFilter(Filter filter) => SetFilter((Device*)FirstMouse, (Device*)LastMouse, filter);
+    public void SetKeyboardFilter(Filter filter) => SetFilter((Device*)FirstKeyboard, (Device*)LastKeyboard, filter);
+
+    void SetFilter(Device* firstDevice, Device* lastDevice, Filter filter)
     {
-        public nint FileHandle;
-        public nint EventHandle;
+        for (var device = firstDevice; device < lastDevice; device++)
+            device->SetFilter(filter);
     }
 
-    public struct Mouse
+    [SkipLocalsInit]
+    Device* WaitDeviceInput(Device* firstDevice, Device* lastDevice, int milliseconds)
     {
-        public Device Device;
+        var count = (int)(lastDevice - firstDevice + 1);
+        var handles = stackalloc nint[count];
+        var handle = handles;
+        for (var device = firstDevice; device <= lastDevice; device++, handle++)
+            *handle = device->EventHandle;
 
-        public void Send(MouseStroke* stroke) => DeviceIoControl(Device.FileHandle, IOCTL_WRITE, stroke, sizeof(MouseStroke), null, 0, null, null);
-        public bool Receive(MouseStroke* stroke) => DeviceIoControl(Device.FileHandle, IOCTL_READ, null, 0, stroke, sizeof(MouseStroke), null, null);
+        var waitResult = WaitForMultipleObjects(count, handles, false, milliseconds);
+        if (waitResult == WAIT_FAILED || waitResult == WAIT_TIMEOUT)
+            return null;
+
+        return firstDevice + waitResult;
     }
 
-    public struct Keyboard
+    public void Destroy()
     {
-        public Device Device;
+        for (var device = FirstDevice; device <= LastDevice; device++)
+            device->Destoy();
 
-        public void Send(KeyStroke* stroke) => DeviceIoControl(Device.FileHandle, IOCTL_WRITE, stroke, sizeof(KeyStroke), null, 0, null, null);
-        public bool Receive(KeyStroke* stroke) => DeviceIoControl(Device.FileHandle, IOCTL_READ, null, 0, stroke, sizeof(KeyStroke), null, null);
+        Marshal.FreeCoTaskMem((nint)Devices);
     }
 
-    public struct Context
+    public static Context Create()
     {
-        public readonly Device* Devices;
+        var allocatedContext = Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
+        var context = *(Context*)&allocatedContext;
 
-        public Device* FirstDevice => Devices;
-        public Device* LastDevice => FirstDevice + MaxDevices - 1;
+        var readonlyDeviceName = "\\\\.\\interception00\0"u8;
+        var deviceName = stackalloc byte[readonlyDeviceName.Length];
+        var deviceNameIndex = (short*)(deviceName + readonlyDeviceName.Length - 3);
+        readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
 
-        public Keyboard* Keyboards => (Keyboard*)Devices;
-        public Keyboard* FirstKeyboard => Keyboards;
-        public Keyboard* LastKeyboard => Keyboards + MaxKeyboards - 1;
-
-        public Mouse* Mouses => (Mouse*)(Devices + MaxMouses);
-        public Mouse* FirstMouse => Mouses;
-        public Mouse* LastMouse => Mouses + MaxMouses - 1;
-
-        public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
-
-        public Device* WaitDeviceInput() => WaitDeviceInput(INFINITE);
-
-        // skip locals. change framework to -windows
-        public Device* WaitDeviceInput(int milliseconds)
+        var eventHandleAligned = stackalloc nint[2];
+        for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++)
         {
-            var devices = stackalloc Device*[MaxDevices];
-            var handles = stackalloc nint[MaxDevices];
+            *deviceNameIndex = (short)('0' + deviceIndex / 10 | '0' + deviceIndex % 10 << 8);
 
-            var count = 0;
-            for (var device = FirstDevice; device < LastDevice; device++)
-                if (device->EventHandle != default)
-                {
-                    devices[count] = device;
-                    handles[count] = device->EventHandle;
-                    count++;
-                }
-
-            var waitResult = WaitForMultipleObjects(count, handles, false, milliseconds);
-
-            if (waitResult == WAIT_FAILED || waitResult == WAIT_TIMEOUT)
-                return null;
-
-            return devices[waitResult];
-        }
-
-        public void Destroy()
-        {
-            for (var device = FirstDevice; device <= LastDevice; device++)
+            if (!context.Devices[deviceIndex].Initialize(deviceName, eventHandleAligned))
             {
-                if (device->FileHandle != INVALID_HANDLE_VALUE)
-                    CloseHandle(device->FileHandle);
-
-                if (device->EventHandle != default)
-                    CloseHandle(device->EventHandle);
-            }
-
-            Marshal.FreeCoTaskMem((nint)Devices);
-        }
-
-        public static Context Create()
-        {
-            var allocatedContext = Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
-            var context = *(Context*)&allocatedContext;
-
-            var readonlyDeviceName = "\\\\.\\interception00\0"u8;
-            var deviceName = stackalloc byte[readonlyDeviceName.Length];
-            var deviceNameIndex = (short*)(deviceName + readonlyDeviceName.Length - 3);
-            readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
-
-            var device = context.FirstDevice;
-            var eventHandleAligned = stackalloc nint[2];
-            for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
-            {
-                *deviceNameIndex = (short)(('0' + deviceIndex / 10) | ('0' + deviceIndex % 10) << 8);
-
-                if ((device->FileHandle = CreateFileA(deviceName, ACCESS_MASK_GENERIC_READ, default, null, FILE_CREATION_OPEN_EXISTS, default, default)) != INVALID_HANDLE_VALUE)
-                    if ((device->EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default)
-                        if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
-                            continue;
-
                 context.Destroy();
                 return default;
             }
-
-            return context;
         }
+
+        return context;
     }
 
-    public static Filter interception_get_filter(Context context, OldDevice device)
-    {
-        var devices = context.Devices;
-        var filter = default(Filter);
+    const int INFINITE = unchecked((int)0xFFFFFFFF);
+    const int WAIT_FAILED = unchecked((int)0xFFFFFFFF);
+    const int WAIT_TIMEOUT = 0x102;
 
-        DeviceIoControl(devices[device].FileHandle, IOCTL_GET_FILTER, null, 0, &filter, sizeof(Filter), null, null);
-
-        return filter;
-    }
-
-    public static void interception_set_filter(Context context, Predicate interception_predicate, Filter filter)
-    {
-        var devices = context.Devices;
-
-        for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++)
-            if ( interception_predicate(context, deviceIndex) != false)
-                DeviceIoControl(devices[deviceIndex].FileHandle, IOCTL_SET_FILTER, &filter, sizeof(Filter), null, 0, null, null);
-    }
-
-    public static int interception_get_hardware_id(Context context, OldDevice device, void* hardware_id_buffer, uint buffer_size)
-    {
-        var outputSize = 0;
-
-        DeviceIoControl(context.Devices[device].FileHandle, IOCTL_GET_HARDWARE_ID, null, 0, hardware_id_buffer, buffer_size, &outputSize, null);
-
-        return outputSize;
-    }
-
-    public static bool interception_is_keyboard(Context context, OldDevice device) => device is >= 0 and < MaxKeyboards;
-
-    public static bool interception_is_mouse(Context context, OldDevice device) => device is >= MaxKeyboards and < MaxDevices;
+    [DllImport("kernel32")] static extern int WaitForMultipleObjects(int count, nint* handles, bool waitAll, int milliseconds);
 }

@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using static Interception.InterceptionInterop;
 
 namespace Interception;
 
@@ -8,20 +7,17 @@ namespace Interception;
 #pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
 public static unsafe class InterceptionImpl
 {
-    static Keyboard* keyboardDevice;
-    static Mouse* mouseDevice;
-    static Context keyboardContext, mouseContext;
+    public static Keyboard* Keyboard;
+    public static Mouse* Mouse;
+    public static Context Context;
 
     static InterceptionImpl()
     {
         if (Debugger.IsAttached)
             return;
 
-        keyboardContext = Context.Create();
-        interception_set_filter(keyboardContext, interception_is_keyboard, Filter.All);
-
-        mouseContext = Context.Create();
-        interception_set_filter(mouseContext, interception_is_mouse, Filter.All);
+        Context = Context.Create();
+        Context.SetFilter(Filter.All);
 
         new Thread(DriverKeyboardUpdater)
         {
@@ -37,16 +33,18 @@ public static unsafe class InterceptionImpl
     static void DriverKeyboardUpdater()
     {
         var stroke = stackalloc KeyStroke[1];
+        Keyboard* keyboard;
         while (true)
         {
             try
             {
                 while (true)
                 {
-                    if ((keyboardDevice = (Keyboard*)keyboardContext.WaitDeviceInput()) == null)
+                    if ((keyboard = Context.WaitKeyboardInput()) == null)
                         continue;
 
-                    while (keyboardDevice->Receive(stroke))
+                    Keyboard = keyboard;
+                    while (Keyboard->Receive(stroke))
                     {
                         var key = ToKey(stroke);
 
@@ -71,7 +69,7 @@ public static unsafe class InterceptionImpl
                         }
 
                         if (!processed)
-                            keyboardDevice->Send(stroke);
+                            Keyboard->Send(stroke);
                     }
                 }
             }
@@ -79,7 +77,7 @@ public static unsafe class InterceptionImpl
             {
                 try
                 {
-                    keyboardDevice->Send(stroke);
+                    Keyboard->Send(stroke);
                 }
                 catch { }
             }
@@ -89,16 +87,18 @@ public static unsafe class InterceptionImpl
     static void DriverMouseUpdater()
     {
         var stroke = stackalloc MouseStroke[1];
+        Mouse* mouse;
         while (true)
         {
             try
             {
                 while (true)
                 {
-                    if ((mouseDevice = (Mouse*)mouseContext.WaitDeviceInput()) == null)
+                    if ((mouse = Context.WaitMouseInput()) == null)
                         continue;
 
-                    while (mouseDevice->Receive(stroke))
+                    Mouse = mouse;
+                    while (Mouse->Receive(stroke))
                     {
                         var state = stroke->State;
                         var processed = false;
@@ -108,7 +108,7 @@ public static unsafe class InterceptionImpl
                             var (x, y) = (stroke->X, stroke->Y);
                             if (x != 0 || y != 0)
                                 if(!InternalOnMouseMove(x, y))
-                                    mouseDevice->Send(stroke);
+                                    Mouse->Send(stroke);
                         }
                         else
                         {
@@ -148,7 +148,7 @@ public static unsafe class InterceptionImpl
                             if (state != default)
                             {
                                 stroke->State = state;
-                                mouseDevice->Send(stroke);
+                                Mouse->Send(stroke);
                             }
                         }
                     }
@@ -158,7 +158,7 @@ public static unsafe class InterceptionImpl
             {
                 try
                 {
-                    mouseDevice->Send(stroke);
+                    Mouse->Send(stroke);
                 }
                 catch { }
             }
@@ -167,11 +167,8 @@ public static unsafe class InterceptionImpl
 
     static long* keyStates = (long*)Marshal.AllocCoTaskMem(0x80) + 0x08;
 
-    static void SetKeyIsDown(Key key) => SetKeyIsDown((int)key);
-    static void SetKeyIsDown(int key) => keyStates[key / 64] |= 1L << (key % 64);
-
-    static void SetKeyIsUp(Key key) => SetKeyIsUp((int)key);
-    static void SetKeyIsUp(int key) => keyStates[key / 64] &= ~(1L << (key % 64));
+    static void SetKeyIsDown(Key key) => keyStates[(int)key / 64] |= 1L << ((int)key % 64);
+    static void SetKeyIsUp(Key key) => keyStates[(int)key / 64] &= ~(1L << ((int)key % 64));
 
     static Key ToKey(KeyStroke* keyStroke)
     {
@@ -270,13 +267,13 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            mouseDevice->Send(stroke);
+            Mouse->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, false);
-            keyboardDevice->Send(stroke);
+            Keyboard->Send(stroke);
         }
     }
 
@@ -303,14 +300,14 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            mouseDevice->Send(stroke);
+            Mouse->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, true);
 
-            keyboardDevice->Send(stroke);
+            Keyboard->Send(stroke);
         }
     }
 
@@ -320,7 +317,7 @@ public static unsafe class InterceptionImpl
         stroke->State = MouseState.Wheel;
         stroke->Rolling = rolling;
 
-        mouseDevice->Send(stroke);
+        Mouse->Send(stroke);
     }
 
     public static void MoveMouse(int x, int y)
@@ -330,7 +327,7 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveRelative;
 
-        mouseDevice->Send(stroke);
+        Mouse->Send(stroke);
     }
 
     public static void SetMouse(int x, int y)
@@ -340,6 +337,6 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveAbsolute;
 
-        mouseDevice->Send(stroke);
+        Mouse->Send(stroke);
     }
 }

@@ -68,6 +68,14 @@ public unsafe static class InterceptionInterop
 
         public nint Address => (nint)Devices;
         public bool IsValid => Devices is not null;
+
+        public void Destroy() => Marshal.FreeCoTaskMem((nint)Devices);
+
+        public static Context Create()
+        {
+            var context = Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
+            return *(Context*)&context;
+        }
     }
 
     [Flags]
@@ -236,27 +244,23 @@ public unsafe static class InterceptionInterop
     {
         var readonlyDeviceName = "\\\\.\\interception00\0"u8;
         var deviceName = stackalloc byte[readonlyDeviceName.Length];
-        var deviceNameIndex = (ushort*)(deviceName + readonlyDeviceName.Length - 3);
+        var deviceNameIndex = (short*)(deviceName + readonlyDeviceName.Length - 3);
         readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
-        
-        var devices = (Device*)Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
-        var context = *(Context*)&devices;
-        if (devices is not null)
+
+        var context = Context.Create();
+        var device = context.FirstDevice;
+        var eventHandleAligned = stackalloc nint[2];
+        for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
         {
-            var device = devices;
-            var eventHandleAligned = stackalloc nint[2];
-            for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
-            {
-                *deviceNameIndex = (ushort)(('0' + (deviceIndex / 10)) | ('0' + (deviceIndex % 10)) << 8);
+            *deviceNameIndex = (short)(('0' + deviceIndex / 10) | ('0' + deviceIndex % 10) << 8);
 
-                if ((device->FileHandle = CreateFileA(deviceName, AccessMask.GenericRead, FileShareMode.None, null, FileCreationDisposition.OpenExisting, default, default)) != INVALID_HANDLE_VALUE)
-                    if ((device->EventHandle = eventHandleAligned[0] = CreateEventA(default, true, false, null)) != default)
-                        if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
-                            continue;
+            if ((device->FileHandle = CreateFileA(deviceName, AccessMask.GenericRead, FileShareMode.None, null, FileCreationDisposition.OpenExisting, default, default)) != INVALID_HANDLE_VALUE)
+                if ((device->EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default)
+                    if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
+                        continue;
 
-                interception_destroy_context(context);
-                return default;
-            }
+            interception_destroy_context(context);
+            return default;
         }
 
         return context;
@@ -278,25 +282,6 @@ public unsafe static class InterceptionInterop
         }
 
         Marshal.FreeCoTaskMem(context.Address);
-    }
-
-    public static Precedence interception_get_precedence(Context context, OldDevice device)
-    {
-        var devices = context.Devices;
-        var precedence = default(Precedence);
-
-        if (context.IsValid && devices[device].FileHandle != default)
-            DeviceIoControl(devices[device].FileHandle, IOCTL_GET_PRECEDENCE, null, 0, &precedence, sizeof(Precedence), null, null);
-
-        return precedence;
-    }
-
-    public static void interception_set_precedence(Context context, OldDevice device, Precedence precedence)
-    {
-        var devices = context.Devices;
-
-        if (context.IsValid && devices[device].FileHandle != default)
-            DeviceIoControl(devices[device].FileHandle, IOCTL_SET_PRECEDENCE, &precedence, sizeof(Precedence), null, 0, null, null);
     }
 
     public static Filter interception_get_filter(Context context, OldDevice device)

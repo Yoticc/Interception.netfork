@@ -45,8 +45,14 @@ public static unsafe class InterceptionImpl
         {
             try
             {
-                while (interception_receive_keyboard(keyboardContext, keyboardDeviceID = interception_wait(keyboardContext), stroke))
+                while (true)
                 {
+                    if ((keyboardDeviceID = interception_wait(keyboardContext)) == -1)
+                        continue;
+
+                    if (!((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Receive(stroke))
+                        continue;
+                    
                     var key = ToKey(stroke);
                     var processed = false;
                     if ((stroke->State & KeyState.Up) == 0)
@@ -69,14 +75,14 @@ public static unsafe class InterceptionImpl
                     }
 
                     if (!processed)
-                        interception_send_keyboard(keyboardContext, keyboardDeviceID, stroke);
+                        ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
                 }
             }
             catch 
             {
                 try
                 {
-                    interception_send_keyboard(keyboardContext, keyboardDeviceID, stroke);
+                    ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
                 }
                 catch { }
             }
@@ -90,8 +96,13 @@ public static unsafe class InterceptionImpl
         {
             try
             {
-                while (interception_receive_mouse(mouseContext, mouseDeviceID = interception_wait(mouseContext), stroke))
+                while (true)
                 {
+                    if ((mouseDeviceID = interception_wait(mouseContext)) == -1)
+                        continue;
+
+                    if (!((Mouse*)mouseContext.Devices + mouseDeviceID)->Receive(stroke))
+                        continue;
                     var processed = false;
                     switch (stroke->State)
                     {
@@ -148,15 +159,16 @@ public static unsafe class InterceptionImpl
                     }
 
                     if (!processed)
-                        interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+                        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
                 }
             }
             catch 
             {
                 try
                 {
-                    interception_send_mouse(mouseContext, mouseDeviceID, stroke);
-                } catch { }
+                    ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+                }
+                catch { }
             }
         }
     }
@@ -266,13 +278,13 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+            ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, false);
-            interception_send_keyboard(keyboardContext, keyboardDeviceID, stroke);
+            ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
         }
     }
 
@@ -299,14 +311,14 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+            ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, true);
 
-            interception_send_keyboard(keyboardContext, keyboardDeviceID, stroke);
+            ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
         }
     }
 
@@ -316,7 +328,7 @@ public static unsafe class InterceptionImpl
         stroke->State = MouseState.Wheel;
         stroke->Rolling = rolling;
 
-        interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
     }
 
     public static void MoveMouse(int x, int y)
@@ -326,7 +338,7 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveRelative;
 
-        interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
     }
 
     public static void SetMouse(int x, int y)
@@ -336,6 +348,6 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveAbsolute;
 
-        interception_send_mouse(mouseContext, mouseDeviceID, stroke);
+        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
     }
 }

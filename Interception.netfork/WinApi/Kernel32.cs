@@ -1,15 +1,10 @@
-﻿using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 static unsafe class Kernel32
 {
     const string kernel = "kernel32";
 
-    [DllImport(kernel)] public static extern nint HeapAlloc(nint heap, HeapFlags flags, long bytes);
-    [DllImport(kernel)] public static extern nint HeapFree(nint heap, HeapFlags flags, nint objectHandle);
-    [DllImport(kernel)] public static extern nint HeapFree(nint heap, HeapFlags flags, void* objectPointer);
     [DllImport(kernel)] public static extern bool CloseHandle(nint objectHandle);
-    [DllImport(kernel)] public static extern nint GetProcessHeap();
     [DllImport(kernel)] public static extern nint CreateFileA(
         byte* fileName,
         AccessMask desiredAccess, 

@@ -227,7 +227,7 @@ public unsafe static class InterceptionInterop
         var deviceNameIndex = (ushort*)(deviceName + readonlyDeviceName.Length - 3);
         readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
         
-        var deviceArray = (DeviceArray*)HeapAlloc(GetProcessHeap(), HeapFlags.ZeroMemory, MaxDevices * sizeof(DeviceArray));
+        var deviceArray = (DeviceArray*)Marshal.AllocCoTaskMem(MaxDevices * sizeof(DeviceArray));
         if (deviceArray is not null)
         {
             var device = deviceArray;
@@ -264,7 +264,7 @@ public unsafe static class InterceptionInterop
                 CloseHandle(device->EventHandle);
         }
 
-        HeapFree(GetProcessHeap(), 0, context);
+        Marshal.FreeCoTaskMem(context);
     }
 
     public static Precedence interception_get_precedence(Context context, Device device)
@@ -335,117 +335,123 @@ public unsafe static class InterceptionInterop
         return deviceIndex + 1;
     }
 
-    public static int interception_send(Context context, Device device, Stroke* stroke, int nstroke)
+    public static int interception_send_mouse(Context context, Device device, Stroke* stroke)
     {
         var devices = (DeviceArray*)context;
         var strokesWritten = 0;
 
-        if(context == default || nstroke == 0 || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
+        if (context == default|| interception_is_invalid(device) || devices[device - 1].FileHandle == default)
             return 0;
 
-        if (interception_is_keyboard(device))
-        {
-            var rawStrokes = (KeyboardInputData*)HeapAlloc(GetProcessHeap(), 0, nstroke * sizeof(KeyboardInputData));
-            if(rawStrokes == default) 
-                return 0;
+        var rawStrokes = (MouseInputData*)Marshal.AllocCoTaskMem(sizeof(MouseInputData));
+        if (rawStrokes == default)
+            return 0;
 
-            var keyStroke = (KeyStroke*)stroke;
-            var rawStroke = rawStrokes;
-            for(var i = 0; i < nstroke; i++, rawStroke++, keyStroke++)
-            {
-                rawStroke->UnitID = 0;
-                rawStroke->MakeCode = keyStroke->Code;
-                rawStroke->Flags = (ushort)keyStroke->State;
-                rawStroke->Reserved = 0;
-                rawStroke->ExtraInformation = keyStroke->Information;
-            }
+        var mouseStroke = (MouseStroke*)stroke;
+        var rawStroke = rawStrokes;
+        rawStroke->UnitId = 0;
+        rawStroke->Flags = (ushort)mouseStroke->Flags;
+        rawStroke->ButtonFlags = (ushort)mouseStroke->State;
+        rawStroke->ButtonData = (ushort)mouseStroke->Rolling;
+        rawStroke->RawButtons = 0;
+        rawStroke->LastX = mouseStroke->X;
+        rawStroke->LastY = mouseStroke->Y;
+        rawStroke->ExtraInformation = mouseStroke->Information;
 
-            DeviceIoControl(devices[device - 1].FileHandle, IOCTL_WRITE, rawStrokes, nstroke * sizeof(KeyboardInputData), null, 0, &strokesWritten, null);
+        DeviceIoControl(devices[device - 1].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(MouseInputData), null, 0, &strokesWritten, null);
+        Marshal.FreeCoTaskMem((nint)rawStrokes);
 
-            HeapFree(GetProcessHeap(), 0, rawStrokes);
-
-            strokesWritten /= sizeof(KeyboardInputData);
-        }
-        else
-        {
-            var rawStrokes = (MouseInputData*)HeapAlloc(GetProcessHeap(), 0, nstroke * sizeof(MouseInputData));
-            if(rawStrokes == default) 
-                return 0;
-
-            var mouseStroke = (MouseStroke*)stroke;
-            var rawStroke = rawStrokes;
-            for(var i = 0; i < nstroke; i++, rawStroke++, mouseStroke++)
-            {
-                rawStroke->UnitId = 0;
-                rawStroke->Flags = (ushort)mouseStroke->Flags;
-                rawStroke->ButtonFlags = (ushort)mouseStroke->State;
-                rawStroke->ButtonData = (ushort)mouseStroke->Rolling;
-                rawStroke->RawButtons = 0;
-                rawStroke->LastX = mouseStroke->X;
-                rawStroke->LastY = mouseStroke->Y;
-                rawStroke->ExtraInformation = mouseStroke->Information;
-            }
-
-            DeviceIoControl(devices[device - 1].FileHandle, IOCTL_WRITE, rawStrokes, nstroke * sizeof(MouseInputData), null, 0, &strokesWritten, null);
-            HeapFree(GetProcessHeap(), 0,  rawStrokes);
-
-            strokesWritten /= sizeof(MouseInputData);
-        }
+        strokesWritten /= sizeof(MouseInputData);
 
         return strokesWritten;
     }
 
-    public static int interception_receive(Context context, Device device, Stroke* stroke, uint nstroke)
+    public static int interception_send_keyboard(Context context, Device device, Stroke* stroke)
+    {
+        var devices = (DeviceArray*)context;
+        var strokesWritten = 0;
+
+        if(context == default || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
+            return 0;
+
+        var rawStrokes = (KeyboardInputData*)Marshal.AllocCoTaskMem(sizeof(KeyboardInputData));
+        if(rawStrokes == default) 
+            return 0;
+
+        var keyStroke = (KeyStroke*)stroke;
+        var rawStroke = rawStrokes;
+        rawStroke->UnitID = 0;
+        rawStroke->MakeCode = keyStroke->Code;
+        rawStroke->Flags = (ushort)keyStroke->State;
+        rawStroke->Reserved = 0;
+        rawStroke->ExtraInformation = keyStroke->Information;
+
+        DeviceIoControl(devices[device - 1].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(KeyboardInputData), null, 0, &strokesWritten, null);
+
+        Marshal.FreeCoTaskMem((nint)rawStrokes);
+
+        strokesWritten /= sizeof(KeyboardInputData);
+
+        return strokesWritten;
+    }
+
+    public static int interception_receive_keyboard(Context context, Device device, Stroke* stroke)
     {
         var devices = (DeviceArray*)context;
         var strokesRead = 0;
 
-        if (context == default || nstroke == 0 || interception_is_invalid(device) || devices[device - 1].FileHandle == default) 
+        if (context == default || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
             return 0;
 
-        if (interception_is_keyboard(device))
+        var rawStrokes = (KeyboardInputData*)Marshal.AllocCoTaskMem(sizeof(KeyboardInputData));
+        if (rawStrokes == null)
+            return 0;
+
+        DeviceIoControl(devices[device - 1].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(KeyboardInputData), &strokesRead, null);
+
+        strokesRead /= sizeof(KeyboardInputData);
+
+        var keyStroke = (KeyStroke*)stroke;
+        for (var i = 0; i < strokesRead; i++, keyStroke++)
         {
-            var rawStrokes = (KeyboardInputData*)HeapAlloc(GetProcessHeap(), 0, nstroke * sizeof(KeyboardInputData));
-            if (rawStrokes == null) 
-                return 0;
-
-            DeviceIoControl(devices[device - 1].FileHandle, IOCTL_READ, null, 0, rawStrokes, (int)nstroke * sizeof(KeyboardInputData), &strokesRead, null);
-
-            strokesRead /= sizeof(KeyboardInputData);
-
-            var keyStroke = (KeyStroke*)stroke;
-            for (var i = 0; i < strokesRead; i++, keyStroke++)
-            {
-                keyStroke->Code = rawStrokes[i].MakeCode;
-                keyStroke->State = (KeyState)rawStrokes[i].Flags;
-                keyStroke->Information = rawStrokes[i].ExtraInformation;
-            }
-
-            HeapFree(GetProcessHeap(), 0, rawStrokes);
+            keyStroke->Code = rawStrokes[i].MakeCode;
+            keyStroke->State = (KeyState)rawStrokes[i].Flags;
+            keyStroke->Information = rawStrokes[i].ExtraInformation;
         }
-        else
+
+        Marshal.FreeCoTaskMem((nint)rawStrokes);
+
+        return strokesRead;
+    }
+
+    public static int interception_receive_mouse(Context context, Device device, Stroke* stroke)
+    {
+        var devices = (DeviceArray*)context;
+        var strokesRead = 0;
+
+        if (context == default || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
+            return 0;
+
+        var rawStrokes = (MouseInputData*)Marshal.AllocCoTaskMem(sizeof(MouseInputData));
+        if (rawStrokes == null)
+            return 0;
+
+        DeviceIoControl(devices[device - 1].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(MouseInputData), &strokesRead, null);
+
+        strokesRead /= sizeof(MouseInputData);
+
+        var mouseStroke = (MouseStroke*)stroke;
+        for (var i = 0; i < strokesRead; i++, mouseStroke++)
         {
-            var rawStrokes = (MouseInputData*)HeapAlloc(GetProcessHeap(), 0, nstroke * sizeof(MouseInputData));
-            if (rawStrokes == null)
-                return 0;
-
-            DeviceIoControl(devices[device - 1].FileHandle, IOCTL_READ, null, 0, rawStrokes, nstroke * sizeof(MouseInputData), &strokesRead, null);
-
-            strokesRead /= sizeof(MouseInputData);
-
-            var mouseStroke = (MouseStroke*)stroke;
-            for (var i = 0; i < strokesRead; i++, mouseStroke++)
-            {
-                mouseStroke->Flags = (MouseFlag)rawStrokes[i].Flags;
-                mouseStroke->State = (MouseState)rawStrokes[i].ButtonFlags;
-                mouseStroke->Rolling = (short)rawStrokes[i].ButtonData;
-                mouseStroke->X = rawStrokes[i].LastX;
-                mouseStroke->Y = rawStrokes[i].LastY;
-                mouseStroke->Information = rawStrokes[i].ExtraInformation;
-            }
-
-            HeapFree(GetProcessHeap(), 0, rawStrokes);
+            mouseStroke->Flags = (MouseFlag)rawStrokes[i].Flags;
+            mouseStroke->State = (MouseState)rawStrokes[i].ButtonFlags;
+            mouseStroke->Rolling = (short)rawStrokes[i].ButtonData;
+            mouseStroke->X = rawStrokes[i].LastX;
+            mouseStroke->Y = rawStrokes[i].LastY;
+            mouseStroke->Information = rawStrokes[i].ExtraInformation;
         }
+
+        Marshal.FreeCoTaskMem((nint)rawStrokes);
 
         return strokesRead;
     }

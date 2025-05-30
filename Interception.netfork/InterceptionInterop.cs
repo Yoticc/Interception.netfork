@@ -34,23 +34,23 @@ public unsafe static class InterceptionInterop
     
     public struct KeyboardInputData
     {
-        public ushort UnitID;
-        public ushort MakeCode;
-        public ushort Flags;
-        public ushort Reserved;
+        ushort UnitID;
+        public ushort Code;
+        public KeyState State;
+        ushort Reserved;
         public uint ExtraInformation;
     }
 
     public struct MouseInputData
     {
-        public ushort UnitId;
-        public ushort Flags;
-        public ushort ButtonFlags;
-        public ushort ButtonData;
-        public uint RawButtons;
+        ushort UnitId;
+        public MouseFlag Flags;
+        public MouseState State;
+        public short Rolling;
+        uint RawButtons;
         public int LastX;
         public int LastY;
-        public uint ExtraInformation;
+        public uint Information;
     }
 
     public struct Device
@@ -68,6 +68,8 @@ public unsafe static class InterceptionInterop
 
         public nint Address => (nint)Devices;
         public bool IsValid => Devices is not null;
+
+        public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
 
         public void Destroy() => Marshal.FreeCoTaskMem((nint)Devices);
 
@@ -98,13 +100,6 @@ public unsafe static class InterceptionInterop
         MRightButtonUp = FilterMouseState.RightButtonUp,
         MMiddleButtonDown = FilterMouseState.MiddleButtonDown,
         MMiddleButtonUp = FilterMouseState.MiddleButtonUp,
-
-        MButton1Down = FilterMouseState.Button1Down,
-        MButton1Up = FilterMouseState.Button1Up,
-        MButton2Down = FilterMouseState.Button2Down,
-        MButton2Up = FilterMouseState.Button2Up,
-        MButton3Down = FilterMouseState.Button3Down,
-        MButton3Up = FilterMouseState.Button3Up,
 
         MButton4Down = FilterMouseState.Button4Down,
         MButton4Up = FilterMouseState.Button4Up,
@@ -145,7 +140,7 @@ public unsafe static class InterceptionInterop
         TerminalServerVkPacket = KeyState.TerminalServerVkPacket << 1
     };
 
-    public enum MouseState
+    public enum MouseState : short
     {
         LeftButtonDown   = 0x001,
         LeftButtonUp     = 0x002,
@@ -153,13 +148,6 @@ public unsafe static class InterceptionInterop
         RightButtonUp    = 0x008,
         MiddleButtonDown = 0x010,
         MiddleButtonUp   = 0x020,
-
-        Button1Down = LeftButtonDown,
-        Button1Up   = LeftButtonUp,
-        Button2Down = RightButtonDown,
-        Button2Up   = RightButtonUp,
-        Button3Down = MiddleButtonDown,
-        Button3Up   = MiddleButtonUp,
 
         Button4Down = 0x040,
         Button4Up   = 0x080,
@@ -183,13 +171,6 @@ public unsafe static class InterceptionInterop
         MiddleButtonDown = MouseState.MiddleButtonDown,
         MiddleButtonUp   = MouseState.MiddleButtonUp,
 
-        Button1Down = MouseState.Button1Down,
-        Button1Up   = MouseState.Button1Up,
-        Button2Down = MouseState.Button2Down,
-        Button2Up   = MouseState.Button2Up,
-        Button3Down = MouseState.Button3Down,
-        Button3Up   = MouseState.Button3Up,
-
         Button4Down = MouseState.Button4Down,
         Button4Up   = MouseState.Button4Up,
         Button5Down = MouseState.Button5Down,
@@ -201,7 +182,7 @@ public unsafe static class InterceptionInterop
         Move = 0x1000
     };
 
-    public enum MouseFlag
+    public enum MouseFlag : short
     {
        MoveRelative            = 0x000,
        MoveAbsolute            = 0x001,
@@ -228,16 +209,6 @@ public unsafe static class InterceptionInterop
         public uint Information;
 
         public bool IsKeyDown => (State & KeyState.Up) == 0;
-    }
-
-    [StructLayout(LayoutKind.Explicit)]
-    public struct Stroke
-    {
-        [FieldOffset(0x00)]
-        public MouseStroke Mouse;
-
-        [FieldOffset(0x00)]
-        public KeyStroke Key;
     }
 
     public static Context interception_create_context()
@@ -333,54 +304,50 @@ public unsafe static class InterceptionInterop
         return deviceIndex;
     }
 
-    public static void interception_send_mouse(Context context, OldDevice device, Stroke* stroke)
+    public static void interception_send_mouse(Context context, OldDevice device, MouseStroke* stroke)
     {
         var devices = context.Devices;
 
-        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
+        if (!context.IsValid || devices[device].FileHandle == default)
             return;
 
         var rawStrokes = stackalloc MouseInputData[1];
 
-        var mouseStroke = (MouseStroke*)stroke;
+        var mouseStroke = stroke;
         var rawStroke = rawStrokes;
-        rawStroke->UnitId = 0;
-        rawStroke->Flags = (ushort)mouseStroke->Flags;
-        rawStroke->ButtonFlags = (ushort)mouseStroke->State;
-        rawStroke->ButtonData = (ushort)mouseStroke->Rolling;
-        rawStroke->RawButtons = 0;
-        rawStroke->LastX = mouseStroke->X;
+        rawStroke->Flags = mouseStroke->Flags;
+        rawStroke->State = mouseStroke->State;
+        rawStroke->Rolling = mouseStroke->Rolling;
+        rawStroke->LastX = mouseStroke->X;  
         rawStroke->LastY = mouseStroke->Y;
-        rawStroke->ExtraInformation = mouseStroke->Information;
+        rawStroke->Information = mouseStroke->Information;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(MouseInputData), null, 0, null, null);
     }
 
-    public static void interception_send_keyboard(Context context, OldDevice device, Stroke* stroke)
+    public static void interception_send_keyboard(Context context, OldDevice device, KeyStroke* stroke)
     {
         var devices = context.Devices;
 
-        if(!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
+        if(!context.IsValid || devices[device].FileHandle == default)
             return;
 
         var rawStrokes = stackalloc KeyboardInputData[1];
 
-        var keyStroke = (KeyStroke*)stroke;
+        var keyStroke = stroke;
         var rawStroke = rawStrokes;
-        rawStroke->UnitID = 0;
-        rawStroke->MakeCode = keyStroke->Code;
-        rawStroke->Flags = (ushort)keyStroke->State;
-        rawStroke->Reserved = 0;
+        rawStroke->Code = keyStroke->Code;
+        rawStroke->State = keyStroke->State;
         rawStroke->ExtraInformation = keyStroke->Information;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(KeyboardInputData), null, 0, null, null);
     }
 
-    public static bool interception_receive_keyboard(Context context, OldDevice device, Stroke* stroke)
+    public static bool interception_receive_keyboard(Context context, OldDevice device, KeyStroke* stroke)
     {
         var devices = context.Devices;
 
-        if (!context.IsValid || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
+        if (!context.IsValid || devices[device - 1].FileHandle == default)
             return false;
 
         var rawStrokes = stackalloc KeyboardInputData[1];
@@ -388,19 +355,19 @@ public unsafe static class InterceptionInterop
         if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(KeyboardInputData), null, null))
             return false;
 
-        var keyStroke = (KeyStroke*)stroke;
-        keyStroke->Code = rawStrokes->MakeCode;
-        keyStroke->State = (KeyState)rawStrokes->Flags;
+        var keyStroke = stroke;
+        keyStroke->Code = rawStrokes->Code;
+        keyStroke->State = rawStrokes->State;
         keyStroke->Information = rawStrokes->ExtraInformation;
 
         return true;
     }
 
-    public static bool interception_receive_mouse(Context context, OldDevice device, Stroke* stroke)
+    public static bool interception_receive_mouse(Context context, OldDevice device, MouseStroke* stroke)
     {
         var devices = context.Devices;
 
-        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
+        if (!context.IsValid || devices[device].FileHandle == default)
             return false;
 
         var rawStrokes = stackalloc MouseInputData[1];
@@ -408,13 +375,13 @@ public unsafe static class InterceptionInterop
         if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(MouseInputData), null, null))
             return false;
 
-        var mouseStroke = (MouseStroke*)stroke;
-        mouseStroke->Flags = (MouseFlag)rawStrokes->Flags;
-        mouseStroke->State = (MouseState)rawStrokes->ButtonFlags;
-        mouseStroke->Rolling = (short)rawStrokes->ButtonData;
+        var mouseStroke = stroke;
+        mouseStroke->Flags = rawStrokes->Flags;
+        mouseStroke->State = rawStrokes->State;
+        mouseStroke->Rolling = rawStrokes->Rolling;
         mouseStroke->X = rawStrokes->LastX;
         mouseStroke->Y = rawStrokes->LastY;
-        mouseStroke->Information = rawStrokes->ExtraInformation;
+        mouseStroke->Information = rawStrokes->Information;
 
         return true;
     }
@@ -424,7 +391,7 @@ public unsafe static class InterceptionInterop
         var devices = context.Devices;
         var outputSize = 0;
 
-        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default) 
+        if (!context.IsValid || devices[device].FileHandle == default) 
             return 0;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_GET_HARDWARE_ID, null, 0, hardware_id_buffer, buffer_size, &outputSize, null);
@@ -432,13 +399,7 @@ public unsafe static class InterceptionInterop
         return outputSize;
     }
 
-    public static bool interception_is_invalid(OldDevice device) => !interception_is_keyboard(device) && !interception_is_mouse(device);
+    public static bool interception_is_keyboard(OldDevice device) => device is >= 0 and < MaxKeyboards;
 
-    static int INTERCEPTION_KEYBOARD(int index) => index;
-
-    public static bool interception_is_keyboard(OldDevice device) => device >= INTERCEPTION_KEYBOARD(0) && device <= INTERCEPTION_KEYBOARD(MaxKeyboards - 1);
-
-    static int INTERCEPTION_MOUSE(int index) => MaxKeyboards + index;
-
-    public static bool interception_is_mouse(OldDevice device) => device >= INTERCEPTION_MOUSE(0) && device <= INTERCEPTION_MOUSE(MaxMouses - 1);
+    public static bool interception_is_mouse(OldDevice device) => device is >= MaxKeyboards and < MaxDevices;
 }

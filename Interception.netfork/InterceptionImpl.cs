@@ -45,7 +45,7 @@ public static unsafe class InterceptionImpl
         {
             try
             {
-                while (interception_receive_keyboard(keyboardContext, keyboardDeviceID = interception_wait(keyboardContext), (Stroke*)stroke) > 0)
+                while (interception_receive_keyboard(keyboardContext, keyboardDeviceID = interception_wait(keyboardContext), (Stroke*)stroke))
                 {
                     var key = ToKey(stroke);
                     var processed = false;
@@ -90,7 +90,7 @@ public static unsafe class InterceptionImpl
         {
             try
             {
-                while (interception_receive_mouse(mouseContext, mouseDeviceID = interception_wait(mouseContext), (Stroke*)stroke) > 0)
+                while (interception_receive_mouse(mouseContext, mouseDeviceID = interception_wait(mouseContext), (Stroke*)stroke))
                 {
                     var processed = false;
                     switch (stroke->State)

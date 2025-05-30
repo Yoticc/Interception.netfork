@@ -343,7 +343,7 @@ public unsafe static class InterceptionInterop
         if (context == default|| interception_is_invalid(device) || devices[device].FileHandle == default)
             return ;
 
-        var rawStrokes = (MouseInputData*)Marshal.AllocCoTaskMem(sizeof(MouseInputData));
+        var rawStrokes = stackalloc MouseInputData[1];
 
         var mouseStroke = (MouseStroke*)stroke;
         var rawStroke = rawStrokes;
@@ -357,7 +357,6 @@ public unsafe static class InterceptionInterop
         rawStroke->ExtraInformation = mouseStroke->Information;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(MouseInputData), null, 0, null, null);
-        Marshal.FreeCoTaskMem((nint)rawStrokes);
     }
 
     public static void interception_send_keyboard(Context context, Device device, Stroke* stroke)
@@ -367,7 +366,7 @@ public unsafe static class InterceptionInterop
         if(context == default || interception_is_invalid(device) || devices[device].FileHandle == default)
             return;
 
-        var rawStrokes = (KeyboardInputData*)Marshal.AllocCoTaskMem(sizeof(KeyboardInputData));
+        var rawStrokes = stackalloc KeyboardInputData[1];
 
         var keyStroke = (KeyStroke*)stroke;
         var rawStroke = rawStrokes;
@@ -378,8 +377,6 @@ public unsafe static class InterceptionInterop
         rawStroke->ExtraInformation = keyStroke->Information;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(KeyboardInputData), null, 0, null, null);
-
-        Marshal.FreeCoTaskMem((nint)rawStrokes);
     }
 
     public static bool interception_receive_keyboard(Context context, Device device, Stroke* stroke)
@@ -389,7 +386,7 @@ public unsafe static class InterceptionInterop
         if (context == default || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
             return false;
 
-        var rawStrokes = (KeyboardInputData*)Marshal.AllocCoTaskMem(sizeof(KeyboardInputData));
+        var rawStrokes = stackalloc KeyboardInputData[1];
 
         if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(KeyboardInputData), null, null))
             return false;
@@ -398,8 +395,6 @@ public unsafe static class InterceptionInterop
         keyStroke->Code = rawStrokes->MakeCode;
         keyStroke->State = (KeyState)rawStrokes->Flags;
         keyStroke->Information = rawStrokes->ExtraInformation;
-
-        Marshal.FreeCoTaskMem((nint)rawStrokes);
 
         return true;
     }
@@ -411,7 +406,7 @@ public unsafe static class InterceptionInterop
         if (context == default || interception_is_invalid(device) || devices[device].FileHandle == default)
             return false;
 
-        var rawStrokes = (MouseInputData*)Marshal.AllocCoTaskMem(sizeof(MouseInputData));
+        var rawStrokes = stackalloc MouseInputData[1];
 
         if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(MouseInputData), null, null))
             return false;
@@ -423,8 +418,6 @@ public unsafe static class InterceptionInterop
         mouseStroke->X = rawStrokes->LastX;
         mouseStroke->Y = rawStrokes->LastY;
         mouseStroke->Information = rawStrokes->ExtraInformation;
-
-        Marshal.FreeCoTaskMem((nint)rawStrokes);
 
         return true;
     }

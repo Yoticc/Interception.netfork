@@ -3,8 +3,6 @@ global using Precedence = int;
 using System.Runtime.InteropServices;
 using static Kernel32;
 
-#pragma warning disable IDE0051 // Remove unused private members
-#pragma warning disable IDE0044 // Add readonly modifier
 namespace Interception;
 public unsafe static class InterceptionInterop
 {
@@ -30,26 +28,24 @@ public unsafe static class InterceptionInterop
     const int IOCTL_WRITE           = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x820 << 2 | METHOD_BUFFERED;
     const int IOCTL_READ            = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x840 << 2 | METHOD_BUFFERED;
     const int IOCTL_GET_HARDWARE_ID = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x880 << 2 | METHOD_BUFFERED;
-    
+
+    [StructLayout(LayoutKind.Explicit, Size = 0x0C)]
     public struct KeyStroke
     {
-        ushort UnitID;
-        public ushort Code;
-        public KeyState State;
-        ushort Reserved;
-        public uint Information;
+        [FieldOffset(0x02)] public ushort Code;
+        [FieldOffset(0x04)] public KeyState State;
+        [FieldOffset(0x08)] public uint Information;
     }
 
+    [StructLayout(LayoutKind.Explicit, Size = 0x18)]
     public struct MouseStroke
     {
-        ushort UnitId;
-        public MouseFlag Flags;
-        public MouseState State;
-        public short Rolling;
-        uint RawButtons;
-        public int X;
-        public int Y;
-        public uint Information;
+        [FieldOffset(0x02)] public MouseFlag Flags;
+        [FieldOffset(0x04)] public MouseState State;
+        [FieldOffset(0x06)] public short Rolling;
+        [FieldOffset(0x0C)] public int X;
+        [FieldOffset(0x10)] public int Y;
+        [FieldOffset(0x14)] public uint Information;
     }
 
     public struct Device
@@ -124,7 +120,7 @@ public unsafe static class InterceptionInterop
     }
 
     [Flags]
-    public enum FilterKeyState
+    public enum FilterKeyState : ushort
     {
         None = 0x0000,
         All  = 0xFFFF,
@@ -139,7 +135,7 @@ public unsafe static class InterceptionInterop
         TerminalServerVkPacket = KeyState.TerminalServerVkPacket << 1
     }
 
-    public enum MouseState : short
+    public enum MouseState : ushort
     {
         LeftButtonDown   = 0x001,
         LeftButtonUp     = 0x002,
@@ -158,7 +154,7 @@ public unsafe static class InterceptionInterop
     }
 
     [Flags]
-    public enum FilterMouseState
+    public enum FilterMouseState : ushort
     {
         None = 0x0000,
         All = 0xFFFF,
@@ -181,7 +177,7 @@ public unsafe static class InterceptionInterop
         Move = 0x1000
     }
 
-    public enum MouseFlag : short
+    public enum MouseFlag : ushort
     {
        MoveRelative            = 0x000,
        MoveAbsolute            = 0x001,

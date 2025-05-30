@@ -35,25 +35,6 @@ public unsafe static class InterceptionInterop
     const int IOCTL_READ            = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x840 << 2 | METHOD_BUFFERED;
     const int IOCTL_GET_HARDWARE_ID = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x880 << 2 | METHOD_BUFFERED;
 
-    [StructLayout(LayoutKind.Explicit, Size = 0x0C)]
-    public struct KeyStroke
-    {
-        [FieldOffset(0x02)] public ushort Code;
-        [FieldOffset(0x04)] public KeyState State;
-        [FieldOffset(0x08)] public uint Information;
-    }
-
-    [StructLayout(LayoutKind.Explicit, Size = 0x18)]
-    public struct MouseStroke
-    {
-        [FieldOffset(0x02)] public MouseFlag Flags;
-        [FieldOffset(0x04)] public MouseState State;
-        [FieldOffset(0x06)] public short Rolling;
-        [FieldOffset(0x0C)] public int X;
-        [FieldOffset(0x10)] public int Y;
-        [FieldOffset(0x14)] public uint Information;
-    }
-
     public struct Device
     {
         public nint FileHandle;
@@ -79,15 +60,46 @@ public unsafe static class InterceptionInterop
     public struct Context
     {
         public readonly Device* Devices;
-        public Keyboard* Keyboards => (Keyboard*)Devices;
-        public Mouse* Mouses => (Mouse*)(Devices + MaxMouses);
 
         public Device* FirstDevice => Devices;
         public Device* LastDevice => FirstDevice + MaxDevices - 1;
 
+        public Keyboard* Keyboards => (Keyboard*)Devices;
+        public Keyboard* FirstKeyboard => Keyboards;
+        public Keyboard* LastKeyboard => Keyboards + MaxKeyboards - 1;
+
+        public Mouse* Mouses => (Mouse*)(Devices + MaxMouses);
+        public Mouse* FirstMouse => Mouses;
+        public Mouse* LastMouse => Mouses + MaxMouses - 1;
+
         public bool IsValid => Devices is not null;
 
         public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
+
+        public OldDevice WaitDeviceInput() => WaitDeviceInput(INFINITE);
+
+        public OldDevice WaitDeviceInput(int milliseconds)
+        {
+            var devices = Devices;
+            var waitHandles = stackalloc nint[MaxDevices];
+
+            int deviceIndex, count, waitResult;
+            for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
+                if (devices[deviceIndex].EventHandle != default)
+                    waitHandles[count++] = devices[deviceIndex].EventHandle;
+
+            waitResult = WaitForMultipleObjects(count, waitHandles, false, milliseconds);
+
+            if (waitResult == WAIT_FAILED || waitResult == WAIT_TIMEOUT)
+                return -1;
+
+            for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
+                if (devices[deviceIndex].EventHandle != default)
+                    if (waitResult == count++)
+                        break;
+
+            return deviceIndex;
+        }
 
         public void Destroy()
         {
@@ -132,115 +144,6 @@ public unsafe static class InterceptionInterop
         }
     }
 
-    public enum Filter : ushort
-    {
-        None = FilterKeyState.None,
-        All = FilterKeyState.All,
-
-        KDown = FilterKeyState.Down,
-        KUp = FilterKeyState.Up,
-        KE0 = FilterKeyState.E0,
-        KE1 = FilterKeyState.E1,
-        KTermSrvSetLED = FilterKeyState.TerminalServerSetLed,
-        KTermSrvShadow = FilterKeyState.TerminalServerShadow,
-        KTermSrvVKPacket = FilterKeyState.TerminalServerVkPacket,
-
-        MLeftButtonDown = FilterMouseState.LeftButtonDown,
-        MLeftButtonUp = FilterMouseState.LeftButtonUp,
-        MRightButtonDown = FilterMouseState.RightButtonDown,
-        MRightButtonUp = FilterMouseState.RightButtonUp,
-        MMiddleButtonDown = FilterMouseState.MiddleButtonDown,
-        MMiddleButtonUp = FilterMouseState.MiddleButtonUp,
-
-        MButton4Down = FilterMouseState.Button4Down,
-        MButton4Up = FilterMouseState.Button4Up,
-        MButton5Down = FilterMouseState.Button5Down,
-        MButton5Up = FilterMouseState.Button5Up,
-
-        MWheel = FilterMouseState.Wheel,
-        MHWheel = FilterMouseState.HWheel,
-
-        MMove = FilterMouseState.Move
-    }
-
-    public enum KeyState : ushort
-    {
-        Down = 0x00,
-        Up   = 0x01,
-        E0   = 0x02,
-        E1   = 0x04,
-
-        TerminalServerSetLed   = 0x08,
-        TerminalServerShadow   = 0x10,
-        TerminalServerVkPacket = 0x20,
-    }
-
-    public enum FilterKeyState : ushort
-    {
-        None = 0x0000,
-        All  = 0xFFFF,
-
-        Down = KeyState.Up,
-        Up   = KeyState.Up << 1,
-        E0   = KeyState.E0 << 1,
-        E1   = KeyState.E1 << 1,
-
-        TerminalServerSetLed   = KeyState.TerminalServerSetLed << 1,
-        TerminalServerShadow   = KeyState.TerminalServerShadow << 1,
-        TerminalServerVkPacket = KeyState.TerminalServerVkPacket << 1
-    }
-
-    public enum MouseState : ushort
-    {
-        LeftButtonDown   = 0x001,
-        LeftButtonUp     = 0x002,
-        RightButtonDown  = 0x004,
-        RightButtonUp    = 0x008,
-        MiddleButtonDown = 0x010,
-        MiddleButtonUp   = 0x020,
-
-        Button4Down = 0x040,
-        Button4Up   = 0x080,
-        Button5Down = 0x100,
-        Button5Up   = 0x200,
-
-        Wheel  = 0x400,
-        HWheel = 0x800
-    }
-
-    public enum FilterMouseState : ushort
-    {
-        None = 0x0000,
-        All = 0xFFFF,
-
-        LeftButtonDown   = MouseState.LeftButtonDown,
-        LeftButtonUp     = MouseState.LeftButtonUp,
-        RightButtonDown  = MouseState.RightButtonDown,
-        RightButtonUp    = MouseState.RightButtonUp,
-        MiddleButtonDown = MouseState.MiddleButtonDown,
-        MiddleButtonUp   = MouseState.MiddleButtonUp,
-
-        Button4Down = MouseState.Button4Down,
-        Button4Up   = MouseState.Button4Up,
-        Button5Down = MouseState.Button5Down,
-        Button5Up   = MouseState.Button5Up,
-
-        Wheel  = MouseState.Wheel,
-        HWheel = MouseState.HWheel,
-
-        Move = 0x1000
-    }
-
-    public enum MouseFlag : ushort
-    {
-       MoveRelative            = 0x000,
-       MoveAbsolute            = 0x001,
-       VirtualDesktop          = 0x002,
-       AttributesChanged       = 0x004,
-       MoveNoCoalesce          = 0x008,
-       TerminalServerSrcShadow = 0x100,
-    }
-
     public static Filter interception_get_filter(Context context, OldDevice device)
     {
         var devices = context.Devices;
@@ -258,31 +161,6 @@ public unsafe static class InterceptionInterop
         for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++)
             if ( interception_predicate(context, deviceIndex) != false)
                 DeviceIoControl(devices[deviceIndex].FileHandle, IOCTL_SET_FILTER, &filter, sizeof(Filter), null, 0, null, null);
-    }
-
-    public static OldDevice interception_wait(Context context) => interception_wait_with_timeout(context, INFINITE);
-
-    public static OldDevice interception_wait_with_timeout(Context context, int milliseconds)
-    {
-        var devices = context.Devices;
-        var waitHandles = stackalloc nint[MaxDevices];
-
-        int deviceIndex, count, waitResult;
-        for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
-            if (devices[deviceIndex].EventHandle != default)
-                waitHandles[count++] = devices[deviceIndex].EventHandle;
-
-        waitResult = WaitForMultipleObjects(count, waitHandles, false, milliseconds);
-
-        if (waitResult == WAIT_FAILED || waitResult == WAIT_TIMEOUT) 
-            return -1;
-
-        for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
-            if (devices[deviceIndex].EventHandle != default)
-                if (waitResult == count++)
-                    break;
-
-        return deviceIndex;
     }
 
     public static int interception_get_hardware_id(Context context, OldDevice device, void* hardware_id_buffer, uint buffer_size)

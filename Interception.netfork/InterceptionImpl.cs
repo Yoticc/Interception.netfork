@@ -47,7 +47,7 @@ public static unsafe class InterceptionImpl
             {
                 while (true)
                 {
-                    if ((keyboardDeviceID = interception_wait(keyboardContext)) == -1)
+                    if ((keyboardDeviceID = keyboardContext.WaitDeviceInput()) == -1)
                         continue;
 
                     if (!((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Receive(stroke))
@@ -98,7 +98,7 @@ public static unsafe class InterceptionImpl
             {
                 while (true)
                 {
-                    if ((mouseDeviceID = interception_wait(mouseContext)) == -1)
+                    if ((mouseDeviceID = mouseContext.WaitDeviceInput()) == -1)
                         continue;
 
                     if (!((Mouse*)mouseContext.Devices + mouseDeviceID)->Receive(stroke))

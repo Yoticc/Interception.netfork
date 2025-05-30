@@ -26,8 +26,6 @@ public unsafe static class InterceptionInterop
     const int MaxMouses = 10;
     const int MaxDevices = MaxKeyboards + MaxMouses;
 
-    const int IOCTL_SET_PRECEDENCE  = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x801 << 2 | METHOD_BUFFERED;
-    const int IOCTL_GET_PRECEDENCE  = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x802 << 2 | METHOD_BUFFERED;
     const int IOCTL_SET_FILTER      = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x804 << 2 | METHOD_BUFFERED;
     const int IOCTL_GET_FILTER      = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x808 << 2 | METHOD_BUFFERED;
     const int IOCTL_SET_EVENT       = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x810 << 2 | METHOD_BUFFERED;
@@ -72,33 +70,31 @@ public unsafe static class InterceptionInterop
         public Mouse* FirstMouse => Mouses;
         public Mouse* LastMouse => Mouses + MaxMouses - 1;
 
-        public bool IsValid => Devices is not null;
-
         public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
 
-        public OldDevice WaitDeviceInput() => WaitDeviceInput(INFINITE);
+        public Device* WaitDeviceInput() => WaitDeviceInput(INFINITE);
 
-        public OldDevice WaitDeviceInput(int milliseconds)
+        // skip locals. change framework to -windows
+        public Device* WaitDeviceInput(int milliseconds)
         {
-            var devices = Devices;
-            var waitHandles = stackalloc nint[MaxDevices];
+            var devices = stackalloc Device*[MaxDevices];
+            var handles = stackalloc nint[MaxDevices];
 
-            int deviceIndex, count, waitResult;
-            for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
-                if (devices[deviceIndex].EventHandle != default)
-                    waitHandles[count++] = devices[deviceIndex].EventHandle;
+            var count = 0;
+            for (var device = FirstDevice; device < LastDevice; device++)
+                if (device->EventHandle != default)
+                {
+                    devices[count] = device;
+                    handles[count] = device->EventHandle;
+                    count++;
+                }
 
-            waitResult = WaitForMultipleObjects(count, waitHandles, false, milliseconds);
+            var waitResult = WaitForMultipleObjects(count, handles, false, milliseconds);
 
             if (waitResult == WAIT_FAILED || waitResult == WAIT_TIMEOUT)
-                return -1;
+                return null;
 
-            for (deviceIndex = 0, count = 0; deviceIndex < MaxDevices; deviceIndex++)
-                if (devices[deviceIndex].EventHandle != default)
-                    if (waitResult == count++)
-                        break;
-
-            return deviceIndex;
+            return devices[waitResult];
         }
 
         public void Destroy()

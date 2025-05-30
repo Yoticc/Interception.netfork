@@ -8,13 +8,9 @@ namespace Interception;
 #pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
 public static unsafe class InterceptionImpl
 {
-    static int keyboardDeviceID, mouseDeviceID;
+    static Keyboard* keyboardDevice;
+    static Mouse* mouseDevice;
     static Context keyboardContext, mouseContext;
-
-    public static int MouseX { get; private set; }
-    public static int MouseY { get; private set; }
-    public static bool IsLeftMouseDown { get; private set; }
-    public static bool IsRightMouseDown{ get; private set; }
 
     static InterceptionImpl()
     {
@@ -47,42 +43,43 @@ public static unsafe class InterceptionImpl
             {
                 while (true)
                 {
-                    if ((keyboardDeviceID = keyboardContext.WaitDeviceInput()) == -1)
+                    if ((keyboardDevice = (Keyboard*)keyboardContext.WaitDeviceInput()) == null)
                         continue;
 
-                    if (!((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Receive(stroke))
-                        continue;
-                    
-                    var key = ToKey(stroke);
-                    var processed = false;
-                    if ((stroke->State & KeyState.Up) == 0)
+                    while (keyboardDevice->Receive(stroke))
                     {
-                        switch (IsKeyUp(key))
+                        var key = ToKey(stroke);
+
+                        var processed = false;
+                        if ((stroke->State & KeyState.Up) == 0)
                         {
-                            case true:
-                                SetKeyIsDown(key);
-                                processed = InternalOnKeyDown(key, false);
-                                break;
-                            case false:
-                                processed = InternalOnKeyDown(key, true);
-                                break;
+                            switch (IsKeyUp(key))
+                            {
+                                case true:
+                                    SetKeyIsDown(key);
+                                    processed = InternalOnKeyDown(key, false);
+                                    break;
+                                case false:
+                                    processed = InternalOnKeyDown(key, true);
+                                    break;
+                            }
                         }
-                    }
-                    else
-                    {
-                        SetKeyIsUp(key);
-                        processed = InternalOnKeyUp(key);
-                    }
+                        else
+                        {
+                            SetKeyIsUp(key);
+                            processed = InternalOnKeyUp(key);
+                        }
 
-                    if (!processed)
-                        ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
+                        if (!processed)
+                            keyboardDevice->Send(stroke);
+                    }
                 }
             }
             catch 
             {
                 try
                 {
-                    ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
+                    keyboardDevice->Send(stroke);
                 }
                 catch { }
             }
@@ -98,75 +95,70 @@ public static unsafe class InterceptionImpl
             {
                 while (true)
                 {
-                    if ((mouseDeviceID = mouseContext.WaitDeviceInput()) == -1)
+                    if ((mouseDevice = (Mouse*)mouseContext.WaitDeviceInput()) == null)
                         continue;
 
-                    if (!((Mouse*)mouseContext.Devices + mouseDeviceID)->Receive(stroke))
-                        continue;
-                    var processed = false;
-                    switch (stroke->State)
+                    while (mouseDevice->Receive(stroke))
                     {
-                        case MouseState.LeftButtonDown:
-                            IsLeftMouseDown = true;
-                            SetKeyIsDown(Key.MouseLeft);
-                            processed = InternalOnKeyDown(Key.MouseLeft, false);
-                            break;
-                        case MouseState.RightButtonDown:
-                            IsRightMouseDown = true;
-                            SetKeyIsDown(Key.MouseRight);
-                            processed = InternalOnKeyDown(Key.MouseRight, false);
-                            break;
-                        case MouseState.MiddleButtonDown:
-                            SetKeyIsDown(Key.MouseMiddle);
-                            processed = InternalOnKeyDown(Key.MouseMiddle, false);
-                            break;
-                        case MouseState.Button4Down:
-                            SetKeyIsDown(Key.Button1);
-                            processed = InternalOnKeyDown(Key.Button1, false);
-                            break;
-                        case MouseState.Button5Down:
-                            SetKeyIsDown(Key.Button2);
-                            processed = InternalOnKeyDown(Key.Button2, false);
-                            break;
-                        case MouseState.LeftButtonUp:
-                            IsLeftMouseDown = false;
-                            SetKeyIsUp(Key.MouseLeft);
-                            processed = InternalOnKeyUp(Key.MouseLeft);
-                            break;
-                        case MouseState.RightButtonUp:
-                            IsRightMouseDown = false;
-                            SetKeyIsUp(Key.MouseRight);
-                            processed = InternalOnKeyUp(Key.MouseRight);
-                            break;
-                        case MouseState.MiddleButtonUp:
-                            SetKeyIsUp(Key.MouseMiddle);
-                            processed = InternalOnKeyUp(Key.MouseMiddle);
-                            break;
-                        case MouseState.Button4Up:
-                            SetKeyIsUp(Key.Button1);
-                            processed = InternalOnKeyUp(Key.Button1);
-                            break;
-                        case MouseState.Button5Up:
-                            SetKeyIsUp(Key.Button2);
-                            processed = InternalOnKeyUp(Key.Button2);
-                            break;
-                        case MouseState.Wheel:
-                            processed = InternalOnMouseWheel(stroke->Rolling);
-                            break;
-                        default:
-                            processed = InternalOnMouseMove(stroke->X, stroke->Y);
-                            break;
-                    }
+                        var state = stroke->State;
+                        var processed = false;
 
-                    if (!processed)
-                        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+                        if (state == default)
+                        {
+                            var (x, y) = (stroke->X, stroke->Y);
+                            if (x != 0 || y != 0)
+                                if(!InternalOnMouseMove(x, y))
+                                    mouseDevice->Send(stroke);
+                        }
+                        else
+                        {
+                            if ((state & MouseState.LeftButtonDown) != 0)
+                                InternalOnKeyDown(Key.MouseLeft, false);
+
+                            if ((state & MouseState.LeftButtonUp) != 0)
+                                InternalOnKeyUp(Key.MouseLeft);
+
+                            if ((state & MouseState.RightButtonDown) != 0)
+                                InternalOnKeyDown(Key.MouseRight, false);
+
+                            if ((state & MouseState.RightButtonUp) != 0)
+                                InternalOnKeyUp(Key.MouseRight);
+
+                            if ((state & MouseState.MiddleButtonDown) != 0)
+                                InternalOnKeyDown(Key.MouseMiddle, false);
+
+                            if ((state & MouseState.MiddleButtonUp) != 0)
+                                InternalOnKeyUp(Key.MouseMiddle);
+
+                            if ((state & MouseState.Button4Down) != 0)
+                                InternalOnKeyDown(Key.Button1, false);
+
+                            if ((state & MouseState.Button4Up) != 0)
+                                InternalOnKeyUp(Key.Button1);
+
+                            if ((state & MouseState.Button5Down) != 0)
+                                InternalOnKeyDown(Key.Button2, false);
+
+                            if ((state & MouseState.Button5Up) != 0)
+                                InternalOnKeyUp(Key.Button2);
+
+                            if ((state & MouseState.Wheel) != 0)
+                                InternalOnMouseWheel(stroke->Rolling);
+
+                            if (state != default)
+                            {
+                                stroke->State = state;
+                                mouseDevice->Send(stroke);
+                            }
+                        }
+                    }
                 }
             }
             catch 
             {
                 try
                 {
-                    ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+                    mouseDevice->Send(stroke);
                 }
                 catch { }
             }
@@ -223,10 +215,8 @@ public static unsafe class InterceptionImpl
 
     static bool InternalOnMouseMove(int x, int y)
     {
-        (MouseX, MouseY) = (x, y);
         if (OnMouseMove != null)
-            if (x != 0 || y != 0)
-                return OnMouseMove(x, y);
+            return OnMouseMove(x, y);
         return false;
     }
 
@@ -239,6 +229,7 @@ public static unsafe class InterceptionImpl
 
     static bool InternalOnKeyDown(Key key, bool repeat)
     {
+        SetKeyIsDown(key);
         if (OnKeyDown != null)
             return OnKeyDown(key, repeat);
         return false;
@@ -246,6 +237,7 @@ public static unsafe class InterceptionImpl
 
     static bool InternalOnKeyUp(Key key)
     {
+        SetKeyIsUp(key);
         if (OnKeyUp != null)
             return OnKeyUp(key);
         return false;
@@ -278,13 +270,13 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+            mouseDevice->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, false);
-            ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
+            keyboardDevice->Send(stroke);
         }
     }
 
@@ -311,14 +303,14 @@ public static unsafe class InterceptionImpl
                 _ => default
             };
 
-            ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+            mouseDevice->Send(stroke);
         }
         else
         {
             var stroke = stackalloc KeyStroke[1];
             *stroke = ToKeyStroke(key, true);
 
-            ((Keyboard*)keyboardContext.Devices + keyboardDeviceID)->Send(stroke);
+            keyboardDevice->Send(stroke);
         }
     }
 
@@ -328,7 +320,7 @@ public static unsafe class InterceptionImpl
         stroke->State = MouseState.Wheel;
         stroke->Rolling = rolling;
 
-        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+        mouseDevice->Send(stroke);
     }
 
     public static void MoveMouse(int x, int y)
@@ -338,7 +330,7 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveRelative;
 
-        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+        mouseDevice->Send(stroke);
     }
 
     public static void SetMouse(int x, int y)
@@ -348,6 +340,6 @@ public static unsafe class InterceptionImpl
         stroke->Y = y;
         stroke->Flags = MouseFlag.MoveAbsolute;
 
-        ((Mouse*)mouseContext.Devices + mouseDeviceID)->Send(stroke);
+        mouseDevice->Send(stroke);
     }
 }

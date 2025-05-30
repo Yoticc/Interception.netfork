@@ -1,15 +1,15 @@
-﻿global using Context = nint;
-global using Device = int;
+﻿global using OldDevice = int;
 global using Precedence = int;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using static Kernel32;
 
+#pragma warning disable IDE0044 // Add readonly modifier
 namespace Interception;
 public unsafe static class InterceptionInterop
 {
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate bool Predicate(Device device);
+    public delegate bool Predicate(OldDevice device);
 
     const nint INVALID_HANDLE_VALUE = -1;
     const int FILE_DEVICE_UNKNOWN = 0x22;
@@ -53,10 +53,21 @@ public unsafe static class InterceptionInterop
         public uint ExtraInformation;
     }
 
-    public struct DeviceArray
+    public struct Device
     {
         public nint FileHandle;
         public nint EventHandle;
+    }
+
+    public struct Context
+    {
+        public readonly Device* Devices;
+
+        public Device* FirstDevice => Devices;
+        public Device* LastDevice => FirstDevice + MaxDevices;
+
+        public nint Address => (nint)Devices;
+        public bool IsValid => Devices is not null;
     }
 
     [Flags]
@@ -221,17 +232,18 @@ public unsafe static class InterceptionInterop
         public KeyStroke Key;
     }
 
-    public static nint interception_create_context()
+    public static Context interception_create_context()
     {
         var readonlyDeviceName = "\\\\.\\interception00\0"u8;
         var deviceName = stackalloc byte[readonlyDeviceName.Length];
         var deviceNameIndex = (ushort*)(deviceName + readonlyDeviceName.Length - 3);
         readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
         
-        var deviceArray = (DeviceArray*)Marshal.AllocCoTaskMem(MaxDevices * sizeof(DeviceArray));
-        if (deviceArray is not null)
+        var devices = (Device*)Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
+        var context = *(Context*)&devices;
+        if (devices is not null)
         {
-            var device = deviceArray;
+            var device = devices;
             var eventHandleAligned = stackalloc nint[2];
             for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
             {
@@ -242,20 +254,20 @@ public unsafe static class InterceptionInterop
                         if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
                             continue;
 
-                interception_destroy_context((nint)deviceArray);
+                interception_destroy_context(context);
                 return default;
             }
         }
 
-        return (Context)deviceArray;
+        return context;
     }
 
     public static void interception_destroy_context(Context context)
     {
-        if (context == default)
+        if (!context.IsValid)
             return;
 
-        var device = (DeviceArray*)context;
+        var device = context.Devices;
         for (var i = 0; i < MaxDevices; i++, device++)
         {
             if (device->FileHandle != INVALID_HANDLE_VALUE)
@@ -265,34 +277,34 @@ public unsafe static class InterceptionInterop
                 CloseHandle(device->EventHandle);
         }
 
-        Marshal.FreeCoTaskMem(context);
+        Marshal.FreeCoTaskMem(context.Address);
     }
 
-    public static Precedence interception_get_precedence(Context context, Device device)
+    public static Precedence interception_get_precedence(Context context, OldDevice device)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
         var precedence = default(Precedence);
 
-        if (context != default && devices[device].FileHandle != default)
+        if (context.IsValid && devices[device].FileHandle != default)
             DeviceIoControl(devices[device].FileHandle, IOCTL_GET_PRECEDENCE, null, 0, &precedence, sizeof(Precedence), null, null);
 
         return precedence;
     }
 
-    public static void interception_set_precedence(Context context, Device device, Precedence precedence)
+    public static void interception_set_precedence(Context context, OldDevice device, Precedence precedence)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if (context != default && devices[device].FileHandle != default)
-            DeviceIoControl(devices[device].FileHandle, IOCTL_SET_PRECEDENCE, & precedence, sizeof(Precedence), null, 0, null, null);
+        if (context.IsValid && devices[device].FileHandle != default)
+            DeviceIoControl(devices[device].FileHandle, IOCTL_SET_PRECEDENCE, &precedence, sizeof(Precedence), null, 0, null, null);
     }
 
-    public static Filter interception_get_filter(Context context, Device device)
+    public static Filter interception_get_filter(Context context, OldDevice device)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
         var filter = default(Filter);
 
-        if (context != default && devices[device].FileHandle != default)
+        if (context.IsValid && devices[device].FileHandle != default)
             DeviceIoControl(devices[device].FileHandle, IOCTL_GET_FILTER, null, 0, &filter, sizeof(Filter), null, null);
 
         return filter;
@@ -300,22 +312,22 @@ public unsafe static class InterceptionInterop
 
     public static void interception_set_filter(Context context, Predicate interception_predicate, Filter filter)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if (context != default)
+        if (context.IsValid)
             for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++)
                 if (devices[deviceIndex].FileHandle != default && interception_predicate(deviceIndex) != default)
                     DeviceIoControl(devices[deviceIndex].FileHandle, IOCTL_SET_FILTER, &filter, sizeof(Filter), null, 0, null, null);
     }
 
-    public static Device interception_wait(Context context) => interception_wait_with_timeout(context, INFINITE);
+    public static OldDevice interception_wait(Context context) => interception_wait_with_timeout(context, INFINITE);
 
-    public static Device interception_wait_with_timeout(Context context, int milliseconds)
+    public static OldDevice interception_wait_with_timeout(Context context, int milliseconds)
     {
-        var devices = (DeviceArray*)context;
-        var waitHandles = stackalloc Context[MaxDevices];
+        var devices = context.Devices;
+        var waitHandles = stackalloc nint[MaxDevices];
 
-        if (context == default) 
+        if (!context.IsValid) 
             return default;
 
         int deviceIndex, count, waitResult;
@@ -336,12 +348,12 @@ public unsafe static class InterceptionInterop
         return deviceIndex;
     }
 
-    public static void interception_send_mouse(Context context, Device device, Stroke* stroke)
+    public static void interception_send_mouse(Context context, OldDevice device, Stroke* stroke)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if (context == default|| interception_is_invalid(device) || devices[device].FileHandle == default)
-            return ;
+        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
+            return;
 
         var rawStrokes = stackalloc MouseInputData[1];
 
@@ -359,11 +371,11 @@ public unsafe static class InterceptionInterop
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(MouseInputData), null, 0, null, null);
     }
 
-    public static void interception_send_keyboard(Context context, Device device, Stroke* stroke)
+    public static void interception_send_keyboard(Context context, OldDevice device, Stroke* stroke)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if(context == default || interception_is_invalid(device) || devices[device].FileHandle == default)
+        if(!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
             return;
 
         var rawStrokes = stackalloc KeyboardInputData[1];
@@ -379,11 +391,11 @@ public unsafe static class InterceptionInterop
         DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(KeyboardInputData), null, 0, null, null);
     }
 
-    public static bool interception_receive_keyboard(Context context, Device device, Stroke* stroke)
+    public static bool interception_receive_keyboard(Context context, OldDevice device, Stroke* stroke)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if (context == default || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
+        if (!context.IsValid || interception_is_invalid(device) || devices[device - 1].FileHandle == default)
             return false;
 
         var rawStrokes = stackalloc KeyboardInputData[1];
@@ -399,11 +411,11 @@ public unsafe static class InterceptionInterop
         return true;
     }
 
-    public static bool interception_receive_mouse(Context context, Device device, Stroke* stroke)
+    public static bool interception_receive_mouse(Context context, OldDevice device, Stroke* stroke)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
 
-        if (context == default || interception_is_invalid(device) || devices[device].FileHandle == default)
+        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default)
             return false;
 
         var rawStrokes = stackalloc MouseInputData[1];
@@ -422,12 +434,12 @@ public unsafe static class InterceptionInterop
         return true;
     }
 
-    public static int interception_get_hardware_id(Context context, Device device, void* hardware_id_buffer, uint buffer_size)
+    public static int interception_get_hardware_id(Context context, OldDevice device, void* hardware_id_buffer, uint buffer_size)
     {
-        var devices = (DeviceArray*)context;
+        var devices = context.Devices;
         var outputSize = 0;
 
-        if (context == default || interception_is_invalid(device) || devices[device].FileHandle == default) 
+        if (!context.IsValid || interception_is_invalid(device) || devices[device].FileHandle == default) 
             return 0;
 
         DeviceIoControl(devices[device].FileHandle, IOCTL_GET_HARDWARE_ID, null, 0, hardware_id_buffer, buffer_size, &outputSize, null);
@@ -435,13 +447,13 @@ public unsafe static class InterceptionInterop
         return outputSize;
     }
 
-    public static bool interception_is_invalid(Device device) => !interception_is_keyboard(device) && !interception_is_mouse(device);
+    public static bool interception_is_invalid(OldDevice device) => !interception_is_keyboard(device) && !interception_is_mouse(device);
 
     static int INTERCEPTION_KEYBOARD(int index) => index;
 
-    public static bool interception_is_keyboard(Device device) => device >= INTERCEPTION_KEYBOARD(0) && device <= INTERCEPTION_KEYBOARD(MaxKeyboards - 1);
+    public static bool interception_is_keyboard(OldDevice device) => device >= INTERCEPTION_KEYBOARD(0) && device <= INTERCEPTION_KEYBOARD(MaxKeyboards - 1);
 
     static int INTERCEPTION_MOUSE(int index) => MaxKeyboards + index;
 
-    public static bool interception_is_mouse(Device device) => device >= INTERCEPTION_MOUSE(0) && device <= INTERCEPTION_MOUSE(MaxMouses - 1);
+    public static bool interception_is_mouse(OldDevice device) => device >= INTERCEPTION_MOUSE(0) && device <= INTERCEPTION_MOUSE(MaxMouses - 1);
 }

@@ -9,7 +9,7 @@ namespace Interception;
 public static unsafe class InterceptionImpl
 {
     static int keyboardDeviceID, mouseDeviceID;
-    static nint keyboardContext, mouseContext;
+    static Context keyboardContext, mouseContext;
 
     public static int MouseX { get; private set; }
     public static int MouseY { get; private set; }

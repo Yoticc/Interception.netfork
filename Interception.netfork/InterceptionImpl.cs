@@ -21,10 +21,10 @@ public static unsafe class InterceptionImpl
         if (Debugger.IsAttached)
             return;
 
-        keyboardContext = interception_create_context();
+        keyboardContext = Context.Create();
         interception_set_filter(keyboardContext, interception_is_keyboard, Filter.All);
 
-        mouseContext = interception_create_context();
+        mouseContext = Context.Create();
         interception_set_filter(mouseContext, interception_is_mouse, Filter.All);
 
         new Thread(DriverKeyboardUpdater)

@@ -1,6 +1,7 @@
 ﻿global using OldDevice = int;
 global using Precedence = int;
 using System.Runtime.InteropServices;
+using static Interception.InterceptionInterop;
 using static Kernel32;
 
 namespace Interception;
@@ -59,19 +60,52 @@ public unsafe static class InterceptionInterop
         public readonly Device* Devices;
 
         public Device* FirstDevice => Devices;
-        public Device* LastDevice => FirstDevice + MaxDevices;
+        public Device* LastDevice => FirstDevice + MaxDevices - 1;
 
-        public nint Address => (nint)Devices;
         public bool IsValid => Devices is not null;
 
         public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
 
-        public void Destroy() => Marshal.FreeCoTaskMem((nint)Devices);
+        public void Destroy()
+        {
+            for (var device = FirstDevice; device <= LastDevice; device++)
+            {
+                if (device->FileHandle != INVALID_HANDLE_VALUE)
+                    CloseHandle(device->FileHandle);
+
+                if (device->EventHandle != default)
+                    CloseHandle(device->EventHandle);
+            }
+
+            Marshal.FreeCoTaskMem((nint)Devices);
+        }
 
         public static Context Create()
         {
-            var context = Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
-            return *(Context*)&context;
+            var allocatedContext = Marshal.AllocCoTaskMem(MaxDevices * sizeof(Device));
+            var context = *(Context*)&allocatedContext;
+
+            var readonlyDeviceName = "\\\\.\\interception00\0"u8;
+            var deviceName = stackalloc byte[readonlyDeviceName.Length];
+            var deviceNameIndex = (short*)(deviceName + readonlyDeviceName.Length - 3);
+            readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
+
+            var device = context.FirstDevice;
+            var eventHandleAligned = stackalloc nint[2];
+            for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
+            {
+                *deviceNameIndex = (short)(('0' + deviceIndex / 10) | ('0' + deviceIndex % 10) << 8);
+
+                if ((device->FileHandle = CreateFileA(deviceName, AccessMask.GenericRead, FileShareMode.None, null, FileCreationDisposition.OpenExisting, default, default)) != INVALID_HANDLE_VALUE)
+                    if ((device->EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default)
+                        if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
+                            continue;
+
+                context.Destroy();
+                return default;
+            }
+
+            return context;
         }
     }
 
@@ -185,50 +219,6 @@ public unsafe static class InterceptionInterop
        AttributesChanged       = 0x004,
        MoveNoCoalesce          = 0x008,
        TerminalServerSrcShadow = 0x100,
-    }
-
-    public static Context interception_create_context()
-    {
-        var readonlyDeviceName = "\\\\.\\interception00\0"u8;
-        var deviceName = stackalloc byte[readonlyDeviceName.Length];
-        var deviceNameIndex = (short*)(deviceName + readonlyDeviceName.Length - 3);
-        readonlyDeviceName.CopyTo(new Span<byte>(deviceName, readonlyDeviceName.Length));
-
-        var context = Context.Create();
-        var device = context.FirstDevice;
-        var eventHandleAligned = stackalloc nint[2];
-        for (var deviceIndex = 0; deviceIndex < MaxDevices; deviceIndex++, device++)
-        {
-            *deviceNameIndex = (short)(('0' + deviceIndex / 10) | ('0' + deviceIndex % 10) << 8);
-
-            if ((device->FileHandle = CreateFileA(deviceName, AccessMask.GenericRead, FileShareMode.None, null, FileCreationDisposition.OpenExisting, default, default)) != INVALID_HANDLE_VALUE)
-                if ((device->EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default)
-                    if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
-                        continue;
-
-            interception_destroy_context(context);
-            return default;
-        }
-
-        return context;
-    }
-
-    public static void interception_destroy_context(Context context)
-    {
-        if (!context.IsValid)
-            return;
-
-        var device = context.Devices;
-        for (var i = 0; i < MaxDevices; i++, device++)
-        {
-            if (device->FileHandle != INVALID_HANDLE_VALUE)
-                CloseHandle(device->FileHandle);
-
-            if (device->EventHandle != default)
-                CloseHandle(device->EventHandle);
-        }
-
-        Marshal.FreeCoTaskMem(context.Address);
     }
 
     public static Filter interception_get_filter(Context context, OldDevice device)

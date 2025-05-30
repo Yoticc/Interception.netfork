@@ -1,13 +1,16 @@
 ﻿global using OldDevice = int;
-global using Precedence = int;
 using System.Runtime.InteropServices;
-using static Interception.InterceptionInterop;
-using static Kernel32;
 
 namespace Interception;
 public unsafe static class InterceptionInterop
 {
     public delegate bool Predicate(OldDevice device);
+
+    [DllImport("kernel32")] static extern nint CreateFileA(byte* fileName, int desiredAccess, int shareMode, void* securityAttributes, int creationDisposition, int flagsAndAttributes, nint templateFile);
+    [DllImport("kernel32")] static extern bool DeviceIoControl(nint device, int ioControlCode, void* inBuffer, long inBufferSize, void* outBuffer, long outBufferSize, int* bytesReturned, void* overlapped);
+    [DllImport("kernel32")] static extern nint CreateEventA(nint eventAttributes, bool manualReset, bool initialState, byte* name);
+    [DllImport("kernel32")] static extern int  WaitForMultipleObjects(int count, nint* handles, bool waitAll, int milliseconds);
+    [DllImport("kernel32")] static extern bool CloseHandle(nint objectHandle);
 
     const nint INVALID_HANDLE_VALUE = -1;
     const int FILE_DEVICE_UNKNOWN = 0x22;
@@ -15,7 +18,9 @@ public unsafe static class InterceptionInterop
     const int FILE_ANY_ACCESS = 0;
     const int INFINITE = unchecked((int)0xFFFFFFFF);
     const int WAIT_FAILED = unchecked((int)0xFFFFFFFF);
-    const int WAIT_TIMEOUT = 258;
+    const int WAIT_TIMEOUT = 0x102;
+    const int ACCESS_MASK_GENERIC_READ = unchecked((int)0x80000000);
+    const int FILE_CREATION_OPEN_EXISTS = 3;
 
     const int MaxKeyboards = 10;
     const int MaxMouses = 10;
@@ -96,7 +101,7 @@ public unsafe static class InterceptionInterop
             {
                 *deviceNameIndex = (short)(('0' + deviceIndex / 10) | ('0' + deviceIndex % 10) << 8);
 
-                if ((device->FileHandle = CreateFileA(deviceName, AccessMask.GenericRead, FileShareMode.None, null, FileCreationDisposition.OpenExisting, default, default)) != INVALID_HANDLE_VALUE)
+                if ((device->FileHandle = CreateFileA(deviceName, ACCESS_MASK_GENERIC_READ, default, null, FILE_CREATION_OPEN_EXISTS, default, default)) != INVALID_HANDLE_VALUE)
                     if ((device->EventHandle = *eventHandleAligned = CreateEventA(default, true, false, null)) != default)
                         if (DeviceIoControl(device->FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null))
                             continue;
@@ -109,7 +114,6 @@ public unsafe static class InterceptionInterop
         }
     }
 
-    [Flags]
     public enum Filter : ushort
     {
         None = FilterKeyState.None,
@@ -153,7 +157,6 @@ public unsafe static class InterceptionInterop
         TerminalServerVkPacket = 0x20,
     }
 
-    [Flags]
     public enum FilterKeyState : ushort
     {
         None = 0x0000,
@@ -187,7 +190,6 @@ public unsafe static class InterceptionInterop
         HWheel = 0x800
     }
 
-    [Flags]
     public enum FilterMouseState : ushort
     {
         None = 0x0000,

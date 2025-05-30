@@ -1,14 +1,13 @@
 ﻿global using OldDevice = int;
 global using Precedence = int;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using static Kernel32;
 
+#pragma warning disable IDE0051 // Remove unused private members
 #pragma warning disable IDE0044 // Add readonly modifier
 namespace Interception;
 public unsafe static class InterceptionInterop
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate bool Predicate(OldDevice device);
 
     const nint INVALID_HANDLE_VALUE = -1;
@@ -32,24 +31,24 @@ public unsafe static class InterceptionInterop
     const int IOCTL_READ            = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x840 << 2 | METHOD_BUFFERED;
     const int IOCTL_GET_HARDWARE_ID = FILE_DEVICE_UNKNOWN << 16 | FILE_ANY_ACCESS << 14 | 0x880 << 2 | METHOD_BUFFERED;
     
-    public struct KeyboardInputData
+    public struct KeyStroke
     {
         ushort UnitID;
         public ushort Code;
         public KeyState State;
         ushort Reserved;
-        public uint ExtraInformation;
+        public uint Information;
     }
 
-    public struct MouseInputData
+    public struct MouseStroke
     {
         ushort UnitId;
         public MouseFlag Flags;
         public MouseState State;
         public short Rolling;
         uint RawButtons;
-        public int LastX;
-        public int LastY;
+        public int X;
+        public int Y;
         public uint Information;
     }
 
@@ -122,7 +121,7 @@ public unsafe static class InterceptionInterop
         TerminalServerSetLed   = 0x08,
         TerminalServerShadow   = 0x10,
         TerminalServerVkPacket = 0x20,
-    };
+    }
 
     [Flags]
     public enum FilterKeyState
@@ -138,7 +137,7 @@ public unsafe static class InterceptionInterop
         TerminalServerSetLed   = KeyState.TerminalServerSetLed << 1,
         TerminalServerShadow   = KeyState.TerminalServerShadow << 1,
         TerminalServerVkPacket = KeyState.TerminalServerVkPacket << 1
-    };
+    }
 
     public enum MouseState : short
     {
@@ -156,7 +155,7 @@ public unsafe static class InterceptionInterop
 
         Wheel  = 0x400,
         HWheel = 0x800
-    };
+    }
 
     [Flags]
     public enum FilterMouseState
@@ -180,7 +179,7 @@ public unsafe static class InterceptionInterop
         HWheel = MouseState.HWheel,
 
         Move = 0x1000
-    };
+    }
 
     public enum MouseFlag : short
     {
@@ -190,25 +189,6 @@ public unsafe static class InterceptionInterop
        AttributesChanged       = 0x004,
        MoveNoCoalesce          = 0x008,
        TerminalServerSrcShadow = 0x100,
-    };
-
-    public struct MouseStroke
-    {
-        public MouseState State;
-        public MouseFlag Flags;
-        public short Rolling;
-        public int X;
-        public int Y;
-        public uint Information;
-    }
-
-    public struct KeyStroke
-    {
-        public ushort Code;
-        public KeyState State;
-        public uint Information;
-
-        public bool IsKeyDown => (State & KeyState.Up) == 0;
     }
 
     public static Context interception_create_context()
@@ -311,18 +291,7 @@ public unsafe static class InterceptionInterop
         if (!context.IsValid || devices[device].FileHandle == default)
             return;
 
-        var rawStrokes = stackalloc MouseInputData[1];
-
-        var mouseStroke = stroke;
-        var rawStroke = rawStrokes;
-        rawStroke->Flags = mouseStroke->Flags;
-        rawStroke->State = mouseStroke->State;
-        rawStroke->Rolling = mouseStroke->Rolling;
-        rawStroke->LastX = mouseStroke->X;  
-        rawStroke->LastY = mouseStroke->Y;
-        rawStroke->Information = mouseStroke->Information;
-
-        DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(MouseInputData), null, 0, null, null);
+        DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, stroke, sizeof(MouseStroke), null, 0, null, null);
     }
 
     public static void interception_send_keyboard(Context context, OldDevice device, KeyStroke* stroke)
@@ -332,15 +301,7 @@ public unsafe static class InterceptionInterop
         if(!context.IsValid || devices[device].FileHandle == default)
             return;
 
-        var rawStrokes = stackalloc KeyboardInputData[1];
-
-        var keyStroke = stroke;
-        var rawStroke = rawStrokes;
-        rawStroke->Code = keyStroke->Code;
-        rawStroke->State = keyStroke->State;
-        rawStroke->ExtraInformation = keyStroke->Information;
-
-        DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, rawStrokes, sizeof(KeyboardInputData), null, 0, null, null);
+        DeviceIoControl(devices[device].FileHandle, IOCTL_WRITE, stroke, sizeof(KeyStroke), null, 0, null, null);
     }
 
     public static bool interception_receive_keyboard(Context context, OldDevice device, KeyStroke* stroke)
@@ -350,15 +311,8 @@ public unsafe static class InterceptionInterop
         if (!context.IsValid || devices[device - 1].FileHandle == default)
             return false;
 
-        var rawStrokes = stackalloc KeyboardInputData[1];
-
-        if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(KeyboardInputData), null, null))
+        if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, stroke, sizeof(KeyStroke), null, null))
             return false;
-
-        var keyStroke = stroke;
-        keyStroke->Code = rawStrokes->Code;
-        keyStroke->State = rawStrokes->State;
-        keyStroke->Information = rawStrokes->ExtraInformation;
 
         return true;
     }
@@ -370,18 +324,9 @@ public unsafe static class InterceptionInterop
         if (!context.IsValid || devices[device].FileHandle == default)
             return false;
 
-        var rawStrokes = stackalloc MouseInputData[1];
-
-        if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, rawStrokes, sizeof(MouseInputData), null, null))
+        var rawStrokes = stackalloc MouseStroke[1];
+        if (!DeviceIoControl(devices[device].FileHandle, IOCTL_READ, null, 0, stroke, sizeof(MouseStroke), null, null))
             return false;
-
-        var mouseStroke = stroke;
-        mouseStroke->Flags = rawStrokes->Flags;
-        mouseStroke->State = rawStrokes->State;
-        mouseStroke->Rolling = rawStrokes->Rolling;
-        mouseStroke->X = rawStrokes->LastX;
-        mouseStroke->Y = rawStrokes->LastY;
-        mouseStroke->Information = rawStrokes->Information;
 
         return true;
     }

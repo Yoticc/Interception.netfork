@@ -49,7 +49,7 @@ public static unsafe class InterceptionImpl
                 {
                     var key = ToKey(stroke);
                     var processed = false;
-                    if (stroke->IsKeyDown)
+                    if ((stroke->State & KeyState.Up) == 0)
                     {
                         switch (IsKeyUp(key))
                         {

@@ -2,7 +2,7 @@ Interception .net fork
 ---------------------
 The C# fork of the software side of the [oblitum/interception](https://github.com/oblitum/Interception) driver. \
 Faster and more efficient than alterantives: [jasonpang/Interceptor](https://github.com/jasonpang/Interceptor), [Nekiplay/MacrosAPI-v3](https://github.com/Nekiplay/MacrosAPI-v3).\
-Doesn't allocate memory in the managed heap at all, only stackalloc and Marshal.AllocCoTaskMem(). \
+Doesn't allocate memory in the managed heap at all, only `stackalloc` and `Marshal.AllocCoTaskMem()`. \
 There is no need for the dependency on interception.dll that alternative solutions have. \
 \
 This library is a complete rethinking of the approach to the software side of the driver, but if you want to use bare implementation rather than fork, you can take a look at the [Yoticc/Interception.net](https://github.com/Yoticc/Interception.net). 

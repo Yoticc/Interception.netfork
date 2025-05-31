@@ -6,6 +6,18 @@
     <Nullable>enable</Nullable>
     <Platforms>x64</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ProduceReferenceAssembly>True</ProduceReferenceAssembly>
+    <AssemblyName>Interception</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <Deterministic>True</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <Deterministic>True</Deterministic>
   </PropertyGroup>
 
 </Project>

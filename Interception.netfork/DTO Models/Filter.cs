@@ -1,4 +1,4 @@
-﻿namespace Interception;
+﻿namespace InterceptionInternal;
 public enum Filter : ushort
 {
     None = FilterKeyState.None,

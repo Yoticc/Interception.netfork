@@ -1,4 +1,4 @@
-﻿namespace Interception;
+﻿namespace InterceptionInternal;
 public unsafe struct Keyboard
 {
     public Device Device;

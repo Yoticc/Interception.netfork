@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace Interception;
+namespace InterceptionInternal;
 public unsafe struct Device
 {
     public nint FileHandle, EventHandle;

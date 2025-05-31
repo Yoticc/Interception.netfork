@@ -1,4 +1,4 @@
-﻿namespace Interception;
+﻿namespace InterceptionInternal;
 public enum KeyState : ushort
 {
     Down = 0x00,

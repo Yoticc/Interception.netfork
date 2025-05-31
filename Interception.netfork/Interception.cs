@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+﻿using InterceptionInternal;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-
-namespace Interception;
 
 public static unsafe class Interception
 {
@@ -24,6 +23,9 @@ public static unsafe class Interception
 
     static void MarkKeyIsDown(Key key) => keyStates[(int)key / 64] |= 1L << ((int)key % 64);
     static void MarkKeyIsUp(Key key) => keyStates[(int)key / 64] &= ~(1L << ((int)key % 64));
+    public static bool IsKeyDown(Key key) => (keyStates[(int)key / 64] & (1L << ((int)key % 64))) != 0;
+    public static bool IsKeyUp(Key key) => (keyStates[(int)key / 64] & (1L << ((int)key % 64))) == 0;
+
     static void KeyboardUpdater()
     {
         KeyStroke stroke;
@@ -126,20 +128,33 @@ public static unsafe class Interception
 
     static bool InternalOnKeyDown(Key key)
     {
-        MarkKeyIsDown(key);
         OnKeyDown?.Invoke(key);
         if (CancelableOnKeyDown is not null)
             if (!CancelableOnKeyDown(key))
                 return false;
-        return InternalOnKeyIsPress(key);
+
+        if (InternalOnKeyIsPress(key))
+        {
+            MarkKeyIsDown(key);
+            return true;
+        }
+        return false;
     }
 
     static bool InternalOnKeyUp(Key key)
     {
-        MarkKeyIsUp(key);
         OnKeyUp?.Invoke(key);
         if (CancelableOnKeyUp is not null)
-            return CancelableOnKeyUp(key);
+        {
+            if (CancelableOnKeyUp(key))
+            {
+                MarkKeyIsUp(key);
+                return true;
+            }
+            return false;
+        }
+
+        MarkKeyIsUp(key);
         return true;
     }
 
@@ -151,9 +166,6 @@ public static unsafe class Interception
         return true;
     }
 
-    public static bool IsKeyDown(Key key) => (keyStates[(int)key / 64] & (1L << ((int)key % 64))) != 0;
-    public static bool IsKeyUp(Key key) => !IsKeyDown(key);
-
     public static void KeyUp(params IEnumerable<Key> keys)
     {
         foreach (var key in keys)
@@ -162,7 +174,6 @@ public static unsafe class Interception
 
     public static void KeyUp(Key key)
     {
-        MarkKeyIsUp(key);
         if (key < Key.None)
         {
             if (Mouse is null)
@@ -176,6 +187,7 @@ public static unsafe class Interception
                     break;
                 }
 
+            MarkKeyIsUp(key);
             Mouse->Send(&stroke);
         }
         else
@@ -185,6 +197,7 @@ public static unsafe class Interception
 
             var stroke = new KeyStroke();
             ToKeyStroke(&stroke, key, false);
+            MarkKeyIsUp(key);
             Keyboard->Send(&stroke);
         }
     }
@@ -197,8 +210,6 @@ public static unsafe class Interception
 
     public static void KeyDown(Key key)
     {
-        MarkKeyIsDown(key);
-
         if (key < Key.None)
         {
             if (Mouse is null)
@@ -212,6 +223,7 @@ public static unsafe class Interception
                     break;
                 }
 
+            MarkKeyIsDown(key);
             Mouse->Send(&stroke);
         }
         else
@@ -221,6 +233,7 @@ public static unsafe class Interception
 
             var stroke = new KeyStroke();
             ToKeyStroke(&stroke, key, true);
+            MarkKeyIsDown(key);
             Keyboard->Send(&stroke);
         }
     }

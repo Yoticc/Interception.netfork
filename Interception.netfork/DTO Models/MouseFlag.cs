@@ -1,4 +1,4 @@
-﻿namespace Interception;
+﻿namespace InterceptionInternal;
 public enum MouseFlag : ushort
 {
     MoveRelative = 0x000,

@@ -1,4 +1,4 @@
-﻿namespace Interception;
+﻿namespace InterceptionInternal;
 public unsafe struct Mouse
 {
     public Device Device;

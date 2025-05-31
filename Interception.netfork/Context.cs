@@ -1,7 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Interception;
+namespace InterceptionInternal;
 public unsafe struct Context
 {
     const int MaxKeyboards = 10;

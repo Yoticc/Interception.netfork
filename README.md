@@ -16,7 +16,7 @@ No methods to get the device filter and its HWID.
 
 Samples
 -------
-Can be found at [samles](https://github.com/Yoticc/Interception.netfork/tree/master/Samples/Samples)
+Can be found at [samples](https://github.com/Yoticc/Interception.netfork/tree/master/Samples/Samples)
 
 Requirements for use
 ----------------

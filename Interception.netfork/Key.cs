@@ -1,4 +1,4 @@
-﻿namespace InterceptionInternal;
+﻿namespace Interceptions;
 public enum Key : short
 {
     MouseLeft = -100,

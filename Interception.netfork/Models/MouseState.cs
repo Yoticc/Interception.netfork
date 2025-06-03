@@ -1,4 +1,4 @@
-﻿namespace InterceptionInternal;
+﻿namespace Interceptions.Internal;
 public enum MouseState : ushort
 {
     LeftButtonDown = 0x001,

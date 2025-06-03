@@ -1,4 +1,6 @@
-﻿// Swaps mouse move axis
+﻿using Interceptions;
+
+// Swaps mouse move axis
 class XYReverse : ISample
 {
     public static void Start() => Interception.CancelableOnMouseMove += OnMouseMove;

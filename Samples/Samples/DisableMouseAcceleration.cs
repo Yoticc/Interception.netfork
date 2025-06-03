@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+using Interceptions;
 
 // Disables software mouse acceleration in windows, if it is disabled, it has no effect
 unsafe class DisableMouseAcceleration : ISample

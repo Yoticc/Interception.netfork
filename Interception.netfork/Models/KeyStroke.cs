@@ -1,7 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace InterceptionInternal;
-
+namespace Interceptions.Internal;
 [StructLayout(LayoutKind.Explicit, Size = 0x0C)]
 public struct KeyStroke
 {

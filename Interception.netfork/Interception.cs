@@ -1,7 +1,8 @@
-﻿using InterceptionInternal;
+﻿using Interceptions.Internal;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
+namespace Interceptions;
 public static unsafe class Interception
 {
     public static Keyboard* Keyboard;

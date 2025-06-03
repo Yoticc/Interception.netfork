@@ -1,4 +1,4 @@
-﻿using InterceptionInternal;
+﻿using Interceptions;
 
 class SwapShiftAndCapslock : ISample
 {

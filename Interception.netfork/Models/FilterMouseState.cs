@@ -1,4 +1,4 @@
-﻿namespace InterceptionInternal;
+﻿namespace Interceptions.Internal;
 public enum FilterMouseState : ushort
 {
     None = 0x0000,

@@ -1,5 +1,4 @@
-﻿using InterceptionInternal;
-
+﻿using Interceptions;
 // Reverse the x y coordinates when left control is pressed 
 class ControlAxisSwap : ISample
 {

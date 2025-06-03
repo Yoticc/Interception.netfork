@@ -1,7 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace InterceptionInternal;
-
+namespace Interceptions.Internal;
 [StructLayout(LayoutKind.Explicit, Size = 0x18)]
 public struct MouseStroke
 {

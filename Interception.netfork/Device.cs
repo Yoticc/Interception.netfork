@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 
 namespace Interceptions.Internal;
-public unsafe struct Device
+public unsafe partial struct Device
 {
     public nint FileHandle, EventHandle;
 
@@ -11,6 +11,7 @@ public unsafe struct Device
         DeviceIoControl(FileHandle, IOCTL_SET_EVENT, eventHandleAligned, sizeof(nint) * 2, null, default, null, null);
 
     public void Send<T>(T* stroke) where T : unmanaged => DeviceIoControl(FileHandle, IOCTL_WRITE, stroke, sizeof(T), null, 0, null, null);
+
     public bool Receive<T>(T* stroke) where T : unmanaged => DeviceIoControl(FileHandle, IOCTL_READ, null, 0, stroke, sizeof(T), null, null);
 
     public void SetFilter(Filter filter) => DeviceIoControl(FileHandle, IOCTL_SET_FILTER, &filter, sizeof(Filter), null, 0, null, null);
@@ -35,8 +36,17 @@ public unsafe struct Device
     const int FILE_ANY_ACCESS = 0;
     const int METHOD_BUFFERED = 0;
 
-    [DllImport("kernel32")] static extern bool DeviceIoControl(nint device, int ioControlCode, void* inBuffer, long inBufferSize, void* outBuffer, long outBufferSize, int* bytesReturned, void* overlapped);
-    [DllImport("kernel32")] static extern nint CreateFileA(byte* fileName, int desiredAccess, int shareMode, void* securityAttributes, int creationDisposition, int flags, nint template);
-    [DllImport("kernel32")] static extern nint CreateEventA(nint eventAttributes, bool manualReset, bool initialState, byte* name);
-    [DllImport("kernel32")] static extern bool CloseHandle(nint handle);
+    [LibraryImport("kernel32")] 
+    [return: MarshalAs(UnmanagedType.Bool)] 
+    internal static partial bool DeviceIoControl(nint device, int ioControlCode, void* inBuffer, long inBufferSize, void* outBuffer, long outBufferSize, int* bytesReturned, void* overlapped);
+
+    [LibraryImport("kernel32")] 
+    internal static partial nint CreateFileA(byte* fileName, int desiredAccess, int shareMode, void* securityAttributes, int creationDisposition, int flags, nint template);
+
+    [LibraryImport("kernel32")] 
+    internal static partial nint CreateEventA(nint eventAttributes, [MarshalAs(UnmanagedType.Bool)] bool manualReset, [MarshalAs(UnmanagedType.Bool)] bool initialState, byte* name);
+
+    [LibraryImport("kernel32")] 
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseHandle(nint handle);
 }

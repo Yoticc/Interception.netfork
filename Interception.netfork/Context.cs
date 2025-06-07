@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 
 namespace Interceptions.Internal;
-public unsafe struct Context
+public unsafe partial struct Context
 {
     const int MaxKeyboards = 10;
     const int MaxMouses = 10;
@@ -24,10 +24,13 @@ public unsafe struct Context
     public int GetIndexOfDevice(Device* device) => (int)(Devices - device);
 
     public Mouse* WaitMouseInput() => (Mouse*)WaitDeviceInput((Device*)FirstMouse, (Device*)LastMouse, INFINITE);
+
     public Keyboard* WaitKeyboardInput() => (Keyboard*)WaitDeviceInput((Device*)FirstKeyboard, (Device*)LastKeyboard, INFINITE);
 
     public void SetFilter(Filter filter) => SetFilter(FirstDevice, LastDevice, filter);
+
     public void SetMouseFilter(Filter filter) => SetFilter((Device*)FirstMouse, (Device*)LastMouse, filter);
+
     public void SetKeyboardFilter(Filter filter) => SetFilter((Device*)FirstKeyboard, (Device*)LastKeyboard, filter);
 
     void SetFilter(Device* firstDevice, Device* lastDevice, Filter filter)
@@ -90,5 +93,6 @@ public unsafe struct Context
     const int WAIT_FAILED = unchecked((int)0xFFFFFFFF);
     const int WAIT_TIMEOUT = 0x102;
 
-    [DllImport("kernel32")] static extern int WaitForMultipleObjects(int count, nint* handles, bool waitAll, int milliseconds);
+    [LibraryImport("kernel32")]
+    internal static partial int WaitForMultipleObjects(int count, nint* handles, [MarshalAs(UnmanagedType.Bool)] bool waitAll, int milliseconds);
 }

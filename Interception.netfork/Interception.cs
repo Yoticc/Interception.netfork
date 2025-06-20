@@ -18,8 +18,9 @@ public static unsafe class Interception
         Context = Context.Create();
         Context.SetFilter(Filter.All);
 
-        new Thread(KeyboardUpdater) { Priority = ThreadPriority.Highest }.Start();
-        new Thread(MouseUpdater) { Priority = ThreadPriority.Highest }.Start();
+        // updater thread stack usage is only 20kb ususally, so we allocate 64kb
+        new Thread(KeyboardUpdater, 1024) { Priority = ThreadPriority.Highest}.Start();
+        new Thread(MouseUpdater, 1024) { Priority = ThreadPriority.Highest }.Start();
     }
 
     static void MarkKeyIsDown(Key key) => keyStates[(int)key / 64] |= 1L << ((int)key % 64);

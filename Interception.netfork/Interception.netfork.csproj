@@ -8,6 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ProduceReferenceAssembly>True</ProduceReferenceAssembly>
     <AssemblyName>Interception</AssemblyName>
+	<DisableRuntimeMarshallingAttribute>true</DisableRuntimeMarshallingAttribute>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

@@ -3,8 +3,9 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Interceptions;
-public static unsafe class Interception
+public static unsafe partial class Interception
 {
+    public static int screenX, screenY;
     public static Keyboard* Keyboard;
     public static Mouse* Mouse;
     public static Context Context;
@@ -14,6 +15,10 @@ public static unsafe class Interception
     {
         if (Debugger.IsAttached)
             return;
+
+        var resolution = stackalloc int[4];
+        GetWindowRect(GetDesktopWindow(), resolution);
+        (screenX, screenY) = (resolution[2], resolution[3]);
 
         Context = Context.Create();
         Context.SetFilter(Filter.All);
@@ -185,7 +190,7 @@ public static unsafe class Interception
             for (var bitshift = 0; bitshift < 5; bitshift++)
                 if (key == (Key)((int)Key.MouseLeft + bitshift))
                 {
-                    stroke.State = (MouseState)(1 << bitshift * 2);
+                    stroke.State = (MouseState)(1 << bitshift * 2 + 1);
                     break;
                 }
 
@@ -258,12 +263,23 @@ public static unsafe class Interception
         Mouse->Send(&stroke);
     }
 
-    public static void SetMouse(int x, int y)
+    public static void SetMouse(int x, int y) => SetMouse((float)x / screenX, (float)y / screenY);
+
+    public static void SetMouse(float x, float y)
     {
         if (Mouse is null)
             return;
 
-        var stroke = new MouseStroke { X = x, Y = y, Flags = MouseFlag.MoveAbsolute };
+        var tx = (int)(x * 0xFFFF);
+        var ty = (int)(y * 0xFFFF);
+        var stroke = new MouseStroke { X = tx, Y = ty, Flags = MouseFlag.MoveAbsolute };
         Mouse->Send(&stroke);
     }
+
+    [LibraryImport("user32")]
+    internal static partial nint GetDesktopWindow();
+
+    [LibraryImport("user32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(nint hwnd, int* rect);
 }
